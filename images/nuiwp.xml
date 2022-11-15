@@ -1,0 +1,16 @@
+<Atlas><Texture filename="nuiwp.tex" /><Elements>
+<Element name="flag.tex"		u1="0" u2=".25" v1=".75" v2="1" />
+<Element name="edit.tex"		u1=".25" u2=".5" v1=".75" v2="1" />
+<Element name="delete.tex"		u1=".5" u2=".75" v1=".75" v2="1" />
+<Element name="marker.tex"		u1=".75" u2="1" v1=".75" v2="1" />
+<Element name="mpon.tex"		u1="0" u2=".25" v1=".5" v2=".75" />
+<Element name="mpoff.tex"		u1=".25" u2=".5" v1=".5" v2=".75" />
+<Element name="left.tex"		u1=".5" u2=".75" v1=".5" v2=".75" />
+<Element name="right.tex"		u1=".75" u2="1" v1=".5" v2=".75" />
+<Element name="arrow.tex"		u1="0" u2=".25" v1=".25" v2=".5" />
+<Element name="up.tex"			u1=".25" u2=".5" v1=".375" v2=".5" />
+<Element name="down.tex"		u1=".25" u2=".5" v1=".25" v2=".375" />
+<Element name="markeron.tex"	u1=".5" u2=".75" v1=".25" v2=".5" />
+<Element name="markeroff.tex"	u1=".75" u2="1" v1=".25" v2=".5" />
+<Element name="direction.tex"	u1="0" u2=".25" v1="0" v2=".25" />
+</Elements></Atlas>
