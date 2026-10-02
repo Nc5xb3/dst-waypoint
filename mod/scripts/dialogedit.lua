@@ -33,7 +33,9 @@ function DialogEdit:InitialiseComponents(w,h)
 	self:SetHAnchor(ANCHOR_MIDDLE)
 	self:SetScaleMode(SCALEMODE_PROPORTIONAL)
 
-	self:SetPosition(0,20)
+	-- Store width for positioning calculation
+	self.dialog_width = w or 400
+	
 	self:SetSize(w,h)
 
 	self:AddClass("Frame")
@@ -152,6 +154,47 @@ function DialogEdit:InitialiseComponents(w,h)
 		end
 	end)
 
+	-- Move/Toggle buttons (moved from list items)
+	-- Up and Down buttons on the left side, stacked vertically in the same row
+	self.btnUp = self:AddChild(ImageButton("images/nuiwp.xml","up.tex","up.tex","up.tex"))
+	self.btnUp:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.MOVE_UP)
+	self.btnUp:SetPosition(box:GridX(1,maxCols),box:GridY(0.85,maxRows))
+	self.btnUp:SetNormalScale(.5)
+	self.btnUp:SetFocusScale(.57)
+	self.btnUp:SetImageNormalColour(.9,.9,.9,1)
+	self.btnUp:SetImageFocusColour(1,1,1,1)
+	self.btnUp:SetOnClick(function()
+		if self.move_up_callback ~= nil then
+			self.move_up_callback()
+		end
+	end)
+
+	self.btnDown = self:AddChild(ImageButton("images/nuiwp.xml","down.tex","down.tex","down.tex"))
+	self.btnDown:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.MOVE_DOWN)
+	self.btnDown:SetPosition(box:GridX(1,maxCols),box:GridY(1.15,maxRows))
+	self.btnDown:SetNormalScale(.5)
+	self.btnDown:SetFocusScale(.57)
+	self.btnDown:SetImageNormalColour(.9,.9,.9,1)
+	self.btnDown:SetImageFocusColour(1,1,1,1)
+	self.btnDown:SetOnClick(function()
+		if self.move_down_callback ~= nil then
+			self.move_down_callback()
+		end
+	end)
+
+	self.btnToggleVisibility = self:AddChild(ImageButton("images/nuiwp.xml","markeron.tex","markeron.tex","markeron.tex"))
+	self.btnToggleVisibility:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.TOGGLE_VISIBILITY)
+	self.btnToggleVisibility:SetPosition(box:GridX(9,maxCols),box:GridY(1,maxRows))
+	self.btnToggleVisibility:SetNormalScale(.5)
+	self.btnToggleVisibility:SetFocusScale(.57)
+	self.btnToggleVisibility:SetImageNormalColour(.9,.9,.9,1)
+	self.btnToggleVisibility:SetImageFocusColour(1,1,1,1)
+	self.btnToggleVisibility:SetOnClick(function()
+		if self.toggle_visibility_callback ~= nil then
+			self.toggle_visibility_callback()
+		end
+	end)
+
 
 	self.btnSave = self:AddChild(ImageButton())
 	self.btnSave:SetPosition(-box:W()/4,-box:H()/2-20/2)
@@ -190,6 +233,18 @@ function DialogEdit:SetWaypoint(waypoint)
 		self.imgFlag:SetImageFocusColour(waypoint.colour.r,waypoint.colour.g,waypoint.colour.b,1)
 
 		self.palette:SetRGB(waypoint.colour.r,waypoint.colour.g,waypoint.colour.b)
+		
+		self:UpdateVisibilityButton(waypoint.hidden)
+	end
+end
+
+function DialogEdit:UpdateVisibilityButton(hidden)
+	if self.btnToggleVisibility then
+		if hidden then
+			self.btnToggleVisibility:SetTextures("images/nuiwp.xml","markeroff.tex","markeroff.tex","markeroff.tex")
+		else
+			self.btnToggleVisibility:SetTextures("images/nuiwp.xml","markeron.tex","markeron.tex","markeron.tex")
+		end
 	end
 end
 
@@ -203,6 +258,18 @@ end
 
 function DialogEdit:SetDeleteCallback(callback)
 	self.delete_callback = callback
+end
+
+function DialogEdit:SetMoveUpCallback(callback)
+	self.move_up_callback = callback
+end
+
+function DialogEdit:SetMoveDownCallback(callback)
+	self.move_down_callback = callback
+end
+
+function DialogEdit:SetToggleVisibilityCallback(callback)
+	self.toggle_visibility_callback = callback
 end
 
 return DialogEdit

@@ -1,7 +1,7 @@
-name = "Waypoint" 
+name = "Waypoint Mod" 
 description = "The ability to add a waypoint at your position and bring up a list of waypoints to travel towards."
 author = "Nc5xb3"
-version = "1.0.7d"
+version = "1.0.8"
 
 forumthread = "/files/file/1580-waypoint/"
 
@@ -46,13 +46,17 @@ configuration_options =
     {
         name = "LOCALIZATION_MOD_WAYPOINT",
         label = "Localization",
-        hover = "Sets the localization",
+        hover = "Auto matches the game's language (English if not supported)",
         options = {
+        	{description = "Auto", data = "auto"},
         	{description = "English", data = "en"},
-        	{description = "Pусский", data = "ru"}, -- Translation by Чapли (http://steamcommunity.com/profiles/76561198019876843)
-        	{description = "日本語", data = "jp"},
+        	{description = "Pусский", data = "ru"}, -- Translation for <v1.0.7 by Чapли (http://steamcommunity.com/profiles/76561198019876843)
+        	{description = "日本語", data = "jp"}, -- MTL
+        	{description = "简体中文", data = "zh"}, -- MTL
+        	{description = "한국어", data = "ko"}, -- MTL
+        	{description = "Português (BR)", data = "pt"}, -- MTL
         },
-        default = "en",
+        default = "auto",
     },
     {
         name = "SKIN_MOD_WAYPOINT",
@@ -83,20 +87,6 @@ configuration_options =
             {description = "True", data = true}
         },
         default = true,
-    },
-    {
-        name = "KEY_TOGGLE_MOD_WAYPOINT",
-        label = "Toggle visibility",
-        hover = "Toggles the visibility of the user interface",
-        options = keysList,
-        default = 120,
-    },
-    {
-        name = "KEY_TOGGLE_MOD_WAYPOINT_INDICATORS",
-        label = "Toggle indicators",
-        hover = "Toggles the visibility of the indicators",
-        options = keysList,
-        default = 0,
     },
     {
         name = "WIDTH_MOD_WAYPOINT",

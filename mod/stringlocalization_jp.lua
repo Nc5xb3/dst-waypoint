@@ -10,6 +10,7 @@ WAYPOINT = {
 		},
 		BUTTON = {
 			TOGGLE_EDITMODE = "トグル編集モード",
+			CONFIGURATIONS = "設定",
 			TOGGLE_INDICATORS = "場所をトグル",
 			TOGGLE_MOVEMENT_PREDICTION = "動きの予測をトグル",
 
@@ -26,6 +27,7 @@ WAYPOINT = {
 			EDIT = "変化する",
 
 			CLOSE = "閉じる",
+			EDIT_KEYBINDS = "キー設定",
 		},
 		INDICATOR = {
 			BUTTON = {
@@ -39,6 +41,7 @@ WAYPOINT = {
 				CANCEL = "キャンセル",
 				OKAY = "はい",
 				DELETE = "デリート",
+				CLOSE = "閉じる",
 			},
 			EDIT = {
 				TITLE = "変化する",
@@ -54,7 +57,23 @@ WAYPOINT = {
 				MESSAGE3 = "Due to this, traveling to a waypoint is not possible.",
 				MESSAGE4 = "A toggle button is now visible allowing you to toggle",
 				MESSAGE5 = "movement prediction in order to use travel.",
-			}
+			},
+			KEYBINDS = {
+				TITLE = "キー設定 (Keybinds)",
+				CAPTURE_TITLE = "キーを押す",
+				INSTRUCTIONS = "ボタンをクリックしてキーを変更 (A-Z のみ)。",
+				INSTRUCTIONS_LINE1 = "キーを押して設定、",
+				INSTRUCTIONS_LINE2 = "Backspace で解除します。",
+				ACTION_TOGGLE_UI = "UI の表示切替",
+				ACTION_TOGGLE_INDICATORS = "インジケータの切替",
+				NONE = "なし",
+			},
+			CONFIG = {
+				TITLE = "設定",
+				DEBUG_TITLE = "デバッグ情報",
+				UWID_LABEL = "UWID:",
+				WAYPOINT_COUNT_LABEL = "ウェイポイント:",
+			},
 		},
 	},
 }

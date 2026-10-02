@@ -16,6 +16,8 @@ local Waypoint = require "waypoint"
 -- DIALOG
 local DialogEdit = require "dialogedit"
 local DialogMp = require "dialogmp"
+local DialogKeybinds = require "dialogkeybinds"
+local DialogConfig = require "dialogconfig"
 
 -- OTHER
 local PersistentData = require "persistentdata"
@@ -29,9 +31,19 @@ local Text = Compatibility:Text()
 
 -- CONSTANTS
 local DEFAULT_LIST_ITEM_HEIGHT = 45
-local TOGGLE_ALPHA_DISABLED = .4
-local TOGGLE_ALPHA_HOVER = .7
+local TOGGLE_ALPHA_DISABLED = 0.4
+local TOGGLE_ALPHA_HOVER = 0.7
 local DIRECTION_LINE_MAX_RANGE = 5
+local DIRECTION_LINE_SCALE = 0.6
+local CLOSEST_WAYPOINT_INITIAL_DIST = 9999
+
+-- Helper function to calculate squared distance (avoids sqrt for comparisons)
+local function GetSquaredDistance(point1, point2)
+	local xd = point1.x - point2.x
+	local yd = point1.y - point2.y
+	local zd = point1.z - point2.z
+	return xd * xd + yd * yd + zd * zd
+end
 
 local MainWp = Class(NPanel, function(self, w, h, skin, showCoordinates, disableAutoTravel, colourVariety) 
 	NPanel._ctor(self, "Waypoint")
@@ -42,7 +54,7 @@ local MainWp = Class(NPanel, function(self, w, h, skin, showCoordinates, disable
 	self.disableAutoTravel = disableAutoTravel or false
 	self.colourVariety = colourVariety or 8
 
-	self.editMode = false
+	-- editMode removed - functionality moved to edit modal
 	self.markerMode = false
 
 	self.listWaypoint = {}
@@ -101,25 +113,29 @@ function MainWp:InitialiseComponents(w, h)
 	local box = NBox(self:GetSize())
 
 	local maxRows = math.floor(box:H()/DEFAULT_LIST_ITEM_HEIGHT)
-	local maxCols = 10
+	local maxCols = 11
 	self.pageSize = maxRows - 2
 
 	local labelTitle = self:AddChild(Text(TALKINGFONT,28))
-	labelTitle:SetPosition(box:GridX(4,maxCols),box:GridY(1,maxRows),0) -- X Center; 1-4-7|8,9,10
+	labelTitle:SetPosition(box:GridX(5.5,maxCols),box:GridY(1,maxRows),0) -- X Center; 1-5.5-11
 	labelTitle:SetString(STRINGS.WAYPOINT.UI.MENU.TITLE)
 
-	self.btnEdit = self:AddChild(ImageButton("images/nuiwp.xml","edit.tex","edit.tex","edit.tex"))
-	self.btnEdit:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.TOGGLE_EDITMODE)
-	self.btnEdit:SetPosition(box:GridX(8,maxCols),box:GridY(1,maxRows),0)
-	self.btnEdit:SetNormalScale(.5)
-	self.btnEdit:SetFocusScale(.57)
-	self.btnEdit:SetImageNormalColour(.9,.9,.9,TOGGLE_ALPHA_DISABLED)
-	self.btnEdit:SetImageFocusColour(1,1,1,TOGGLE_ALPHA_HOVER)
-	self.btnEdit:SetOnClick(function() self:ToggleEditMode() end)
+	self.btnConfig = self:AddChild(ImageButton("images/nuiwp.xml","edit.tex","edit.tex","edit.tex"))
+	self.btnConfig:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.CONFIGURATIONS)
+	self.btnConfig:SetPosition(box:GridX(9,maxCols),box:GridY(1,maxRows),0)
+	self.btnConfig:SetNormalScale(.5)
+	self.btnConfig:SetFocusScale(.57)
+	self.btnConfig:SetImageNormalColour(.9,.9,.9,1)
+	self.btnConfig:SetImageFocusColour(1,1,1,1)
+	self.btnConfig:SetOnClick(function()
+		if self.dialogEdit == nil then
+			self:OpenConfigDialog()
+		end
+	end)
 
 	self.btnIndicators = self:AddChild(ImageButton("images/nuiwp.xml","marker.tex","marker.tex","marker.tex"))
 	self.btnIndicators:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.TOGGLE_INDICATORS)
-	self.btnIndicators:SetPosition(box:GridX(9,maxCols),box:GridY(1,maxRows),0)
+	self.btnIndicators:SetPosition(box:GridX(10,maxCols),box:GridY(1,maxRows),0)
 	self.btnIndicators:SetNormalScale(.5)
 	self.btnIndicators:SetFocusScale(.57)
 	self.btnIndicators:SetImageNormalColour(.9,.9,.9,TOGGLE_ALPHA_DISABLED)
@@ -128,12 +144,16 @@ function MainWp:InitialiseComponents(w, h)
 
 	self.btnAdd = self:AddChild(ImageButton("images/nuiwp.xml","flag.tex","flag.tex","flag.tex"))
 	self.btnAdd:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.ADD)
-	self.btnAdd:SetPosition(box:GridX(10,maxCols),box:GridY(1,maxRows),0)
+	self.btnAdd:SetPosition(box:GridX(11,maxCols),box:GridY(1,maxRows),0)
 	self.btnAdd:SetNormalScale(.6)
 	self.btnAdd:SetFocusScale(.68)
 	self.btnAdd:SetImageNormalColour(.9,.9,.9,1)
 	self.btnAdd:SetImageFocusColour(1,1,1,1)
-	self.btnAdd:SetOnClick(function() self:Add() end)
+	self.btnAdd:SetOnClick(function()
+		if self.dialogEdit == nil and self.dialogConfig == nil then
+			self:Add()
+		end
+	end)
 
 	-- LIST OF WAYPOINTS
 	for i=1,self.pageSize do
@@ -146,34 +166,34 @@ function MainWp:InitialiseComponents(w, h)
 		local liBox = NBox(li:GetSize())
 
 		li.lblName = li:AddChild(NInput("WaypointName"))
-		li.lblName:SetPosition(liBox:GridX(4,maxCols),0) -- X Center; 1-4-7
-		li.lblName:SetSize(liBox:GridW(10)*7-10,liBox:H()-10)
+		li.lblName:SetPosition(liBox:GridX(5,maxCols),0) -- X Center; 1-5-11
+		li.lblName:SetSize(liBox:GridW(maxCols)*9-10,liBox:H()-10)
 
 		-- coordinate x
 		li.lblX = li:AddChild(Text(NUMBERFONT,16))
-		li.lblX:SetPosition(liBox:GridX(8,maxCols),liBox:GridY(1,2))
+		li.lblX:SetPosition(liBox:GridX(9,maxCols),liBox:GridY(1,2))
 		li.lblX:SetString("")
 
 		-- coordinate y
 		li.lblZ = li:AddChild(Text(NUMBERFONT,16))
-		li.lblZ:SetPosition(liBox:GridX(8,maxCols),liBox:GridY(2,2))
+		li.lblZ:SetPosition(liBox:GridX(9,maxCols),liBox:GridY(2,2))
 		li.lblZ:SetString("")
 
 		li.lblArrow = li:AddChild(Image("images/nuiwp.xml", "direction.tex"))
 	    li.lblArrow.inst:AddTag("NOCLICK")
-		li.lblArrow:SetPosition(liBox:GridX(9,maxCols),0,0)
+		li.lblArrow:SetPosition(liBox:GridX(10,maxCols),0,0)
 		li.lblArrow:SetTint(1,1,1,.4)
 
 		-- distance
 		li.lblDistance = li:AddChild(Text(NUMBERFONT,20))
-		li.lblDistance:SetPosition(liBox:GridX(9,maxCols),0,0)
+		li.lblDistance:SetPosition(liBox:GridX(10,maxCols),0,0)
 
 		-- travel flag
 		li.btnNavigate = li:AddChild(ImageButton("images/nuiwp.xml","flag.tex","flag.tex","flag.tex"))
 		if not self.disableAutoTravel then
 			li.btnNavigate:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.TRAVEL)
 		end
-		li.btnNavigate:SetPosition(liBox:GridX(10,maxCols),liBox:GridY(1,1))
+		li.btnNavigate:SetPosition(liBox:GridX(11,maxCols),liBox:GridY(1,1))
 		li.btnNavigate:SetNormalScale(.5)
 		li.btnNavigate:SetFocusScale(.57)
 		li.btnNavigate:SetImageNormalColour(.9,.9,.9,1)
@@ -183,7 +203,7 @@ function MainWp:InitialiseComponents(w, h)
 
 		li.btnUp = li:AddChild(ImageButton("images/nuiwp.xml","up.tex","up.tex","up.tex"))
 		li.btnUp:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.MOVE_UP)
-		li.btnUp:SetPosition(liBox:GridX(8,maxCols),liBox:GridY(1,2))
+		li.btnUp:SetPosition(liBox:GridX(10,maxCols),liBox:GridY(1,2))
 		li.btnUp:SetNormalScale(.5)
 		li.btnUp:SetFocusScale(.57)
 		li.btnUp:SetImageNormalColour(.9,.9,.9,1)
@@ -191,7 +211,7 @@ function MainWp:InitialiseComponents(w, h)
 
 		li.btnDown = li:AddChild(ImageButton("images/nuiwp.xml","down.tex","down.tex","down.tex"))
 		li.btnDown:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.MOVE_DOWN)
-		li.btnDown:SetPosition(liBox:GridX(8,maxCols),liBox:GridY(2,2))
+		li.btnDown:SetPosition(liBox:GridX(10,maxCols),liBox:GridY(2,2))
 		li.btnDown:SetNormalScale(.5)
 		li.btnDown:SetFocusScale(.57)
 		li.btnDown:SetImageNormalColour(.9,.9,.9,1)
@@ -199,24 +219,16 @@ function MainWp:InitialiseComponents(w, h)
 
 		li.btnHidden = li:AddChild(ImageButton("images/nuiwp.xml","markeron.tex","markeron.tex","markeron.tex"))
 		li.btnHidden:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.TOGGLE_VISIBILITY)
-		li.btnHidden:SetPosition(liBox:GridX(9,maxCols),liBox:GridY(1,1))
+		li.btnHidden:SetPosition(liBox:GridX(11,maxCols),liBox:GridY(1,1))
 		li.btnHidden:SetNormalScale(.5)
 		li.btnHidden:SetFocusScale(.57)
 		li.btnHidden:SetImageNormalColour(.9,.9,.9,1)
 		li.btnHidden:SetImageFocusColour(1,1,1,1)
 
-		li.btnEdit = li:AddChild(ImageButton("images/nuiwp.xml","edit.tex","edit.tex","edit.tex"))
-		li.btnEdit:SetTooltip(STRINGS.WAYPOINT.UI.BUTTON.EDIT)
-		li.btnEdit:SetPosition(liBox:GridX(10,maxCols),liBox:GridY(1,1))
-		li.btnEdit:SetNormalScale(.5)
-		li.btnEdit:SetFocusScale(.57)
-		li.btnEdit:SetImageNormalColour(.9,.9,.9,1)
-		li.btnEdit:SetImageFocusColour(1,1,1,1)
-
+		-- These buttons are now in the edit modal, keep them hidden in the list
 		li.btnUp:Hide()
 		li.btnDown:Hide()
 		li.btnHidden:Hide()
-		li.btnEdit:Hide()
 	end
 
 	-- Page Navigation
@@ -228,7 +240,11 @@ function MainWp:InitialiseComponents(w, h)
 	self.btnPrev:SetFocusScale(.57)
 	self.btnPrev:SetImageNormalColour(.9,.9,.9,1)
 	self.btnPrev:SetImageFocusColour(1,1,1,1)
-	self.btnPrev:SetOnClick(function() self:PrevPage() end)
+	self.btnPrev:SetOnClick(function()
+		if self.dialogEdit == nil and self.dialogConfig == nil then
+			self:PrevPage()
+		end
+	end)
 
 	self.lblPageIndex = self:AddChild(Text(NUMBERFONT, 32))
 	self.lblPageIndex:SetPosition(box:GridX(3,5),box:GridY(maxRows,maxRows))
@@ -240,7 +256,11 @@ function MainWp:InitialiseComponents(w, h)
 	self.btnNext:SetFocusScale(.57)
 	self.btnNext:SetImageNormalColour(.9,.9,.9,1)
 	self.btnNext:SetImageFocusColour(1,1,1,1)
-	self.btnNext:SetOnClick(function() self:NextPage() end)
+	self.btnNext:SetOnClick(function()
+		if self.dialogEdit == nil and self.dialogConfig == nil then
+			self:NextPage()
+		end
+	end)
 
 	self.lblXZ = self:AddChild(Text(NUMBERFONT,24))
 	self.lblXZ:SetPosition(box:GridX(5,5),box:GridY(maxRows,maxRows))
@@ -251,7 +271,11 @@ function MainWp:InitialiseComponents(w, h)
 	self.btnClose:SetPosition(0,-box:H()/2-20/2)
 	self.btnClose:SetScale(.7,.7,.7)
 	self.btnClose:SetText(STRINGS.WAYPOINT.UI.BUTTON.CLOSE)
-	self.btnClose:SetOnClick(function() self:Hide(true) end)
+	self.btnClose:SetOnClick(function()
+		if self.dialogEdit == nil and self.dialogConfig == nil then
+			self:Hide(true)
+		end
+	end)
 
 	-- EXTRA
 
@@ -263,7 +287,11 @@ function MainWp:InitialiseComponents(w, h)
 	self.btnMpToggle:SetFocusScale(.57)
 	self.btnMpToggle:SetImageNormalColour(.9,.9,.9,1)
 	self.btnMpToggle:SetImageFocusColour(1,1,1,1)
-	self.btnMpToggle:SetOnClick(function() self:ToggleMovementPrediction() end)
+	self.btnMpToggle:SetOnClick(function()
+		if self.dialogEdit == nil and self.dialogConfig == nil then
+			self:ToggleMovementPrediction()
+		end
+	end)
 	if Compatibility:ThePlayer().components.locomotor ~= nil then
 		self.btnMpToggle:Hide()
 	else
@@ -285,6 +313,7 @@ function MainWp:Hide(quiet)
 	end
 end
 
+
 function MainWp:Show(quiet)
 	MainWp._base.Show(self)
 	if quiet == nil or quiet == false then
@@ -294,6 +323,7 @@ function MainWp:Show(quiet)
 		self:UpdateMovementPredictionButton()
 	end
 end
+
 
 function MainWp:GetAngleToPoint(x,z)
 	local p = Compatibility:ThePlayer()
@@ -312,24 +342,24 @@ function MainWp:OnUpdate_PlayerPosition(point)
 	if self.showCoordinates then
 		self.lblXZ:SetString(math.floor(point.x) .. " " .. math.floor(point.z))
 	end
+	
 	local pageSize = #self.listWaypoint
-	for i=1,pageSize,1 do
+	for i = 1, pageSize do
 		local li = self.listWaypoint[i]
-		if li:IsVisible() and li.currentWaypoint ~= nil and self.editMode == false then
-			local xd = point.x - li.currentWaypoint.coord.x
-			local yd = point.y - li.currentWaypoint.coord.y
-			local zd = point.z - li.currentWaypoint.coord.z
-			local dist = math.sqrt(xd*xd+yd*yd+zd*zd) / TILE_SCALE
+		if li:IsVisible() and li.currentWaypoint ~= nil then
+			local distSq = GetSquaredDistance(point, li.currentWaypoint.coord)
+			local dist = math.sqrt(distSq) / TILE_SCALE
 			li.lblDistance:SetString(math.floor(dist) .. "m")
 
 			li.lblArrow:SetRotation(self:GetAngleToPoint(
-				li.currentWaypoint.coord.x,li.currentWaypoint.coord.z
+				li.currentWaypoint.coord.x, li.currentWaypoint.coord.z
 			))
+			
+			local arrowScale = DIRECTION_LINE_SCALE
 			if dist < DIRECTION_LINE_MAX_RANGE then
-				li.lblArrow:SetScale(.6*dist/DIRECTION_LINE_MAX_RANGE)
-			elseif li.lblArrow:GetScale() ~= .6 then
-				li.lblArrow:SetScale(.6)
+				arrowScale = DIRECTION_LINE_SCALE * dist / DIRECTION_LINE_MAX_RANGE
 			end
+			li.lblArrow:SetScale(arrowScale)
 		end
 	end
 end
@@ -342,16 +372,18 @@ function MainWp:LoadData()
 		local oldWaypoints = self.dataContainer:GetValue(self.uwidOld) or {}
 		if #oldWaypoints > 0 then
 			print("[waypoint] migrating waypoints from " .. self.uwidOld)
-			for i,w in pairs(oldWaypoints) do
-				self.waypoints[#self.waypoints + i] = w
+			for i, w in ipairs(oldWaypoints) do
+				table.insert(self.waypoints, w)
 			end
 			self.dataContainer:SetValue(self.uwidOld, {})
 		end
 	end
 
-	-- load waypoints
+	-- Compact waypoints to remove any gaps from saved data
+	self:CompactWaypoints()
 
-	for i,w in pairs(self.waypoints) do
+	-- load waypoints
+	for i,w in ipairs(self.waypoints) do
 		self:AddMapIcon(w)
 	end
 
@@ -378,8 +410,13 @@ function MainWp:Add()
 	-- Get unique name depending on area
 	local uniqueName = AdjectivesUtility:GetRandomWord()
 
+	local groundName = iground[gid]
+	if groundName == nil then
+		groundName = 'Ground'
+	end
+
 	local waypoint = Waypoint(
-		uniqueName .. ' ' .. iground[gid],
+		uniqueName .. ' ' .. groundName,
 		{["x"]=x,["y"]=y,["z"]=z},
 		{
 			r=math.random()*.7+.3,
@@ -398,22 +435,25 @@ end
 
 function MainWp:ClosestWaypointAt(point, maxDist)
 	local num = #self.waypoints
+	if num == 0 then
+		return nil
+	end
+	
 	local wid = nil
-	local currentDist = 9999
-	for i=1,num,1 do
-		local li = self.waypoints[i]
-
-		local xd = point.x - li.coord.x
-		local yd = point.y - li.coord.y
-		local zd = point.z - li.coord.z
-		local dist = math.sqrt(xd*xd+yd*yd+zd*zd) / TILE_SCALE
+	local currentDistSq = CLOSEST_WAYPOINT_INITIAL_DIST * CLOSEST_WAYPOINT_INITIAL_DIST
+	local maxDistSq = maxDist * maxDist * TILE_SCALE * TILE_SCALE
+	
+	for i = 1, num do
+		local waypoint = self.waypoints[i]
+		local distSq = GetSquaredDistance(point, waypoint.coord)
 		
-		if dist <= currentDist then
-			currentDist = dist
+		if distSq < currentDistSq then
+			currentDistSq = distSq
 			wid = i
 		end
 	end
-	if currentDist < maxDist then
+	
+	if currentDistSq < maxDistSq then
 		return wid
 	end
 	return nil
@@ -436,32 +476,78 @@ function MainWp:ToggleHidden(wid)
 end
 
 function MainWp:MoveUp(wid)
-	if wid-1 > 0 then
+	if wid > 1 and wid <= #self.waypoints then
+		-- Swap waypoints
 		local temp = self.waypoints[wid-1]
 		self.waypoints[wid-1] = self.waypoints[wid]
 		self.waypoints[wid] = temp
+		
+		-- Calculate new page index for the moved waypoint (now at wid-1)
+		local pageSize = #self.listWaypoint
+		local newWid = wid - 1
+		local newPageIndex = math.ceil(newWid / pageSize)
+		
+		-- Update page if needed
+		if newPageIndex ~= self.pageIndex then
+			self.pageIndex = newPageIndex
+		end
+		
+		-- Update dialog's waypoint_id if it exists
+		if self.dialogEdit and self.dialogEdit.waypoint_id == wid then
+			self.dialogEdit.waypoint_id = newWid
+		end
+		
 		self:SaveData()
-		-- print("[waypoint] waypoint moved up saved!")
 		self:UpdateList()
 	end
 end
 
 function MainWp:MoveDown(wid)
-	if wid < #self.waypoints then
+	if wid >= 1 and wid < #self.waypoints then
+		-- Swap waypoints
 		local temp = self.waypoints[wid+1]
 		self.waypoints[wid+1] = self.waypoints[wid]
 		self.waypoints[wid] = temp
+		
+		-- Calculate new page index for the moved waypoint (now at wid+1)
+		local pageSize = #self.listWaypoint
+		local newWid = wid + 1
+		local newPageIndex = math.ceil(newWid / pageSize)
+		
+		-- Update page if needed
+		if newPageIndex ~= self.pageIndex then
+			self.pageIndex = newPageIndex
+		end
+		
+		-- Update dialog's waypoint_id if it exists
+		if self.dialogEdit and self.dialogEdit.waypoint_id == wid then
+			self.dialogEdit.waypoint_id = newWid
+		end
+		
 		self:SaveData()
-		-- print("[waypoint] waypoint moved down saved!")
 		self:UpdateList()
 	end
 end
 
 function MainWp:Edit(wid)
-	if self.dialogEdit == nil then
+	if self.dialogEdit == nil and self.dialogConfig == nil then
+		-- Disable main UI interactions while edit dialog is open
+		self:DisableMainUI()
+		
 		local waypoint = self.waypoints[wid]
 		self.dialogEdit = self:AddChild(DialogEdit(nil,nil,self.skin,self.colourVariety)) 
+		-- Position to the right of the main waypoint UI
+		-- MainWp is at x=-310 (center) with width self.w, so right edge is at -310 + (self.w/2)
+		-- DialogEdit width is typically 400, so center at right edge + spacing + (dialog_width/2)
+		local spacing = 100
+		local mainwp_right_edge = -310 + (self.w / 2)
+		local dialog_width = self.dialogEdit.dialog_width or 400
+		local dialog_x = mainwp_right_edge + spacing + (dialog_width / 2)
+		self.dialogEdit:SetPosition(dialog_x, 20)
 		self.dialogEdit:SetWaypoint(waypoint)
+		-- Store waypoint ID and MainWp reference for move/toggle operations
+		self.dialogEdit.waypoint_id = wid
+		self.dialogEdit.mainwp = self
 		self.dialogEdit:SetSuccessCallback(function()
 			waypoint.name = self.dialogEdit.inputName.input:GetText()
 			local x = tonumber(self.dialogEdit.inputX.input:GetText())
@@ -486,22 +572,152 @@ function MainWp:Edit(wid)
 			self:KillEditDialog()
 		end)
 		self.dialogEdit:SetDeleteCallback(function()
-			self:Remove(wid)
+			-- Use the dialog's current id: it changes if the waypoint was moved up/down
+			local currentWid = self.dialogEdit.waypoint_id or wid
+			if self.waypoints[currentWid] == waypoint then
+				self:Remove(currentWid)
+			else
+				-- Fallback: locate the waypoint by reference
+				for i, w in ipairs(self.waypoints) do
+					if w == waypoint then
+						self:Remove(i)
+						break
+					end
+				end
+			end
 			self:KillEditDialog()
+		end)
+		-- Set up callbacks for move/toggle buttons
+		-- (these don't call SetWaypoint, so unsaved edits in the dialog are kept)
+		self.dialogEdit:SetMoveUpCallback(function()
+			if self.dialogEdit.mainwp and self.dialogEdit.waypoint_id then
+				-- MoveUp updates self.dialogEdit.waypoint_id
+				self.dialogEdit.mainwp:MoveUp(self.dialogEdit.waypoint_id)
+			end
+		end)
+		self.dialogEdit:SetMoveDownCallback(function()
+			if self.dialogEdit.mainwp and self.dialogEdit.waypoint_id then
+				-- MoveDown updates self.dialogEdit.waypoint_id
+				self.dialogEdit.mainwp:MoveDown(self.dialogEdit.waypoint_id)
+			end
+		end)
+		self.dialogEdit:SetToggleVisibilityCallback(function()
+			if self.dialogEdit.mainwp and self.dialogEdit.waypoint_id then
+				self.dialogEdit.mainwp:ToggleHidden(self.dialogEdit.waypoint_id)
+				self.dialogEdit:UpdateVisibilityButton(waypoint.hidden)
+			end
 		end)
 	else
 		print("[waypoint] already editing!")
 	end
 end
 
+function MainWp:DisableMainUI()
+	-- Disable all interactive elements in the main UI
+	if self.btnClose then self.btnClose:Disable() end
+	if self.btnAdd then self.btnAdd:Disable() end
+	if self.btnPrev then self.btnPrev:Disable() end
+	if self.btnNext then self.btnNext:Disable() end
+	if self.btnIndicators then self.btnIndicators:Disable() end
+	if self.btnMpToggle then self.btnMpToggle:Disable() end
+	if self.btnConfig then self.btnConfig:Disable() end
+	
+	-- Disable all list item interactions
+	for i, li in ipairs(self.listWaypoint) do
+		if li.btnNavigate then li.btnNavigate:Disable() end
+		if li.lblName and li.lblName.input then
+			-- Store original callback and clear it
+			li.lblName.input.originalOnClick = li.lblName.input.OnClick
+			li.lblName.input.OnClick = nil
+		end
+	end
+end
+
+function MainWp:EnableMainUI()
+	-- Re-enable all interactive elements in the main UI
+	if self.btnClose then self.btnClose:Enable() end
+	if self.btnAdd then self.btnAdd:Enable() end
+	if self.btnPrev then self.btnPrev:Enable() end
+	if self.btnNext then self.btnNext:Enable() end
+	if self.btnIndicators then self.btnIndicators:Enable() end
+	if self.btnMpToggle then self.btnMpToggle:Enable() end
+	if self.btnConfig then self.btnConfig:Enable() end
+	
+	-- Re-enable all list item interactions
+	for i, li in ipairs(self.listWaypoint) do
+		if li.btnNavigate then li.btnNavigate:Enable() end
+		if li.lblName and li.lblName.input and li.lblName.input.originalOnClick then
+			-- Restore original callback
+			li.lblName.input.OnClick = li.lblName.input.originalOnClick
+			li.lblName.input.originalOnClick = nil
+		end
+	end
+end
+
 function MainWp:KillEditDialog()
-	self.dialogEdit:Kill()
-	self.dialogEdit = nil
+	if self.dialogEdit then
+		self.dialogEdit:Kill()
+		self.dialogEdit = nil
+		-- Re-enable main UI when dialog closes
+		self:EnableMainUI()
+		-- Update list to remove highlighting
+		self:UpdateList()
+	end
 end
 
 function MainWp:KillMpDialog()
 	self.dialogMp:Kill()
 	self.dialogMp = nil
+end
+
+function MainWp:OpenConfigDialog()
+	if self.dialogConfig == nil then
+		-- Disable main UI interactions while config dialog is open
+		self:DisableMainUI()
+		
+		self.dialogConfig = self:AddChild(DialogConfig(nil, nil, self.skin, self))
+		if self.getKeybinds and self.setKeybinds then
+			self.dialogConfig:SetKeybindAccessors(self.getKeybinds, self.setKeybinds)
+		end
+		self.dialogConfig:SetCancelCallback(function()
+			self:KillConfigDialog()
+		end)
+	else
+		print("[waypoint] config dialog already open!")
+	end
+end
+
+function MainWp:KillConfigDialog()
+	if self.dialogConfig then
+		self.dialogConfig:Kill()
+		self.dialogConfig = nil
+		-- Re-enable main UI when dialog closes
+		self:EnableMainUI()
+	end
+end
+
+function MainWp:OpenKeybindDialog()
+	if self.dialogKeybinds == nil then
+		self.dialogKeybinds = self:AddChild(DialogKeybinds(nil, nil, self.skin))
+		if self.getKeybinds and self.setKeybinds then
+			self.dialogKeybinds:SetKeybindAccessors(self.getKeybinds, self.setKeybinds)
+		end
+		self.dialogKeybinds:SetSuccessCallback(function()
+			self:KillKeybindDialog()
+		end)
+		self.dialogKeybinds:SetCancelCallback(function()
+			self:KillKeybindDialog()
+		end)
+	else
+		print("[waypoint] already editing keybinds!")
+	end
+end
+
+function MainWp:KillKeybindDialog()
+	if self.dialogKeybinds ~= nil then
+		self.dialogKeybinds:Kill()
+		self.dialogKeybinds = nil
+	end
 end
 
 function MainWp:Remove(wid)
@@ -558,6 +774,9 @@ function MainWp:AddMarker(waypoint)
 	end
 end
 function MainWp:RemoveMarker(waypoint)
+	if self.markers == nil then
+		return
+	end
 	local marker = self.markers[waypoint]
 	self.markers[waypoint] = nil
 	if marker ~= nil then
@@ -630,6 +849,28 @@ function MainWp:RemoveMapIcon(waypoint)
 	end
 end
 
+-- Removes everything this UI put into the world/front end that would outlive the
+-- widget itself: marker entities and map icon templates. Called when the HUD is
+-- rebuilt (e.g. character change) before a new MainWp is created.
+-- Indicator widgets are not touched; they die with the old HUD.
+function MainWp:CleanupWorldObjects()
+	if self.markers ~= nil then
+		for waypoint, marker in pairs(self.markers) do
+			if marker ~= nil and marker:IsValid() then
+				marker:Remove()
+			end
+		end
+		self.markers = {}
+	end
+	self.markerMode = false
+	if self.mapIcons ~= nil and TheFrontEnd.NMapIconTemplateManager then
+		for waypoint, template in pairs(self.mapIcons) do
+			TheFrontEnd.NMapIconTemplateManager:RemoveTemplate(template)
+		end
+		self.mapIcons = {}
+	end
+end
+
 function MainWp:ContainsMarker(waypoint)
 	if not self.markers then return end
 	for i,v in pairs(self.markers) do
@@ -672,40 +913,7 @@ function MainWp:UpdateMarker(waypoint)
 	end
 end
 
-function MainWp:ToggleEditMode()
-	if self.editMode then
-		self.editMode = false
-		self.btnEdit:SetImageNormalColour(.9,.9,.9,TOGGLE_ALPHA_DISABLED)
-		self.btnEdit:SetImageFocusColour(1,1,1,TOGGLE_ALPHA_HOVER)
-	else
-		self.editMode = true
-		self.btnEdit:SetImageNormalColour(.9,.9,.9,1)
-		self.btnEdit:SetImageFocusColour(1,1,1,1)
-	end
-	for i,li in pairs(self.listWaypoint) do
-		if self.editMode then
-			li.btnHidden:Show()
-			li.btnUp:Show()
-			li.btnDown:Show()
-			li.btnEdit:Show()
-			li.lblX:Hide()
-			li.lblZ:Hide()
-			li.lblDistance:Hide()
-			li.lblArrow:Hide()
-			li.btnNavigate:Hide()
-		else
-			li.btnHidden:Hide()
-			li.btnUp:Hide()
-			li.btnDown:Hide()
-			li.btnEdit:Hide()
-			li.lblX:Show()
-			li.lblZ:Show()
-			li.lblDistance:Show()
-			li.lblArrow:Show()
-			li.btnNavigate:Show()
-		end
-	end
-end
+-- ToggleEditMode function removed - edit mode functionality disabled
 
 function MainWp:ToggleMarkerMode()
 	if self.markerMode then
@@ -775,44 +983,101 @@ function MainWp:LastPage()
 	self:UpdateList()
 end
 
+function MainWp:CompactWaypoints()
+	-- Rebuild waypoints array to remove any gaps
+	local compacted = {}
+	for i, w in ipairs(self.waypoints) do
+		if w ~= nil then
+			table.insert(compacted, w)
+		end
+	end
+	-- Also check for waypoints beyond ipairs range (shouldn't happen, but just in case)
+	for i, w in pairs(self.waypoints) do
+		if type(i) == "number" and w ~= nil and i > #self.waypoints then
+			table.insert(compacted, w)
+		end
+	end
+	self.waypoints = compacted
+end
+
 function MainWp:UpdateList()
+	-- Compact waypoints array first to ensure no gaps
+	self:CompactWaypoints()
+	
 	local pageSize = #self.listWaypoint
-	local pageCap = math.ceil(#self.waypoints / pageSize)
+	local totalWaypoints = #self.waypoints
+	local pageCap = math.ceil(totalWaypoints / pageSize)
+	if pageCap == 0 then pageCap = 1 end
+	
+	-- Ensure pageIndex is valid
+	if self.pageIndex > pageCap then
+		self.pageIndex = pageCap
+	end
+	if self.pageIndex < 1 then
+		self.pageIndex = 1
+	end
+	
 	for i=1,pageSize,1 do
 		local wid = (self.pageIndex-1)*pageSize+i
-		local waypoint = self.waypoints[wid];
+		local waypoint = self.waypoints[wid]
 		local li = self.listWaypoint[i]
 		li.currentWaypoint = waypoint
-		self:DisplayWaypoint(li, waypoint)
-		li.lblName:SetCallback(function()
-			waypoint.name = li.lblName.input:GetText()
-			self:UpdateMarker(waypoint)
-			self:SaveData()
-		end)
-		li.btnNavigate:SetOnClick(function()
-			if not self.disableAutoTravel then
-				self:MovePlayerTo(waypoint)
+		
+		-- Display waypoint or hide if nil
+		if waypoint ~= nil then
+			self:DisplayWaypoint(li, waypoint)
+			
+			-- Highlight if this is the currently edited waypoint
+			-- Modify the background style image tint if it exists
+			if self.dialogEdit and self.dialogEdit.waypoint_id == wid then
+				-- Highlight with yellow tint on background
+				if li.style and li.style.back then
+					li.style.back:SetTint(1, 1, 0.7, 1)  -- Yellow tint for highlight
+				elseif li.style and li.style.front then
+					li.style.front:SetTint(1, 1, 0.7, 1)  -- Alternative: front panel
+				end
+			else
+				-- Reset to normal background tint
+				if li.style and li.style.back then
+					li.style.back:SetTint(1, 1, 1, 1)  -- Normal white tint
+				elseif li.style and li.style.front then
+					li.style.front:SetTint(1, 1, 1, 1)  -- Normal white tint
+				end
 			end
-		end)
-		li.btnHidden:SetOnClick(function()
-			self:ToggleHidden(wid)
-		end)
-		li.btnUp:SetOnClick(function()
-			self:MoveUp(wid)
-		end)
-		li.btnDown:SetOnClick(function()
-			self:MoveDown(wid)
-		end)
-		li.btnEdit:SetOnClick(function()
-			self:Edit(wid)
-		end)
+			
+			-- Set up callbacks only if waypoint exists
+			li.lblName:SetCallback(function()
+				if waypoint then
+					waypoint.name = li.lblName.input:GetText()
+					self:UpdateMarker(waypoint)
+					self:SaveData()
+				end
+			end)
+			li.btnNavigate:SetOnClick(function()
+				if waypoint and not self.disableAutoTravel then
+					self:MovePlayerTo(waypoint)
+				end
+			end)
+			-- Make clicking on waypoint name always open the full edit modal
+			-- Only allow clicking if edit dialog is not already open
+			li.lblName.input:SetOnClick(function()
+				if self.dialogEdit == nil and self.dialogConfig == nil and waypoint then
+					self:Edit(wid)
+				end
+			end)
+		else
+			-- Hide list item if no waypoint
+			li:Hide()
+			-- Reset background tint if style exists
+			if li.style and li.style.back then
+				li.style.back:SetTint(1, 1, 1, 1)
+			elseif li.style and li.style.front then
+				li.style.front:SetTint(1, 1, 1, 1)
+			end
+		end
 	end
-	if self.pageIndex > pageCap then
-		self:LastPage()
-	else
-		self.lblPageIndex:SetString(self.pageIndex .. "/" .. pageCap)
-	end
-
+	
+	self.lblPageIndex:SetString(self.pageIndex .. "/" .. pageCap)
 	self:SaveData()
 end
 
