@@ -1,7 +1,7 @@
 name = "Waypoint Mod" 
 description = "The ability to add a waypoint at your position and bring up a list of waypoints to travel towards."
 author = "Nc5xb3"
-version = "1.1.0"
+version = "1.1.2"
 
 forumthread = "/files/file/1580-waypoint/"
 
@@ -35,12 +35,6 @@ for i=1,#alphabet do
 end
 keysList[#alphabet + 1] = {description = "None", data = 0}
 
-local sizeList = {}
-for i=1,6 do
-	local size = 240 + 60 * i
-	sizeList[i] = {description = size, data = size}
-end
-
 configuration_options =
 {
     {
@@ -69,30 +63,6 @@ configuration_options =
         default = 1,
     },
     {
-        name = "WIDTH_MOD_WAYPOINT",
-        label = "Window width",
-        hover = "Width of the waypoint window",
-        options = sizeList,
-        default = 360,
-    },
-    {
-        name = "HEIGHT_MOD_WAYPOINT",
-        label = "Window height",
-        hover = "Height of the waypoint window (taller shows more waypoints per page)",
-        options = sizeList,
-        default = 480,
-    },
-    {
-        name = "SHOW_WAYPOINT_INDICATORS",
-        label = "Indicators on at start",
-        hover = "Show waypoint indicators when you join a world. Toggle any time in-game",
-        options = {
-            {description = "Off", data = false},
-            {description = "On", data = true}
-        },
-        default = true,
-    },
-    {
         name = "COLOUR_PALETTE_VARIETY",
         label = "Colour choices",
         hover = "How many colours the flag colour picker offers",
@@ -115,14 +85,16 @@ configuration_options =
         },
         default = false,
     },
-    {
-        name = "ENABLE_CONTROLLER_SUPPORT",
-        label = "Controller support",
-        hover = "Social menu (Back/View): Waypoints opens the window (d-pad/stick to move, A select, B back), Waypoint indicators toggles them",
-        options = {
-            {description = "Off", data = false},
-            {description = "On", data = true}
-        },
-        default = true,
-    },
+    -- Controller support is always on now (ENABLE_CONTROLLER_SUPPORT in modmain.lua).
+    -- Kept here commented out in case it needs to come back as an option.
+    -- {
+    --     name = "ENABLE_CONTROLLER_SUPPORT",
+    --     label = "Controller support",
+    --     hover = "Social menu (Back/View): Waypoints opens the window (d-pad/stick to move, A select, B back), Waypoint indicators toggles them",
+    --     options = {
+    --         {description = "Off", data = false},
+    --         {description = "On", data = true}
+    --     },
+    --     default = true,
+    -- },
 }

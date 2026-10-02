@@ -8,12 +8,12 @@ space NIndicator positions itself in.
 ]]
 
 local IndicatorArea = {
-	SHAPES = { "rectangle", "ellipse", "circle" },
+	SHAPES = { "square", "rectangle", "circle", "ellipse" }, -- order shown in the dialog
 	MIN_SIZE = 30,
 	MAX_SIZE = 100,
 	SIZE_STEP = 10,
-	DEFAULT_SHAPE = "rectangle",
-	DEFAULT_SIZE = 50, -- roughly where indicators sat before this was configurable
+	DEFAULT_SHAPE = "ellipse", -- shown as "Oval"
+	DEFAULT_SIZE = 80,
 
 	-- Distance from the screen edges to the outline at 100%. Includes room for
 	-- the indicator's icon/arrow so they stay on screen, and keeps clear of the
@@ -36,6 +36,11 @@ function IndicatorArea:IsValidShape(shape)
 		end
 	end
 	return false
+end
+
+-- Rectangle and square share the straight-edged geometry (square has hx == hy)
+function IndicatorArea:IsBoxShape()
+	return self.shape == "rectangle" or self.shape == "square"
 end
 
 function IndicatorArea:ClampSize(size)
@@ -68,7 +73,8 @@ function IndicatorArea:GetBox(screenW, screenH)
 	local s = self.size / 100
 	local hx = math.max(1, (right - left) / 2 * s)
 	local hy = math.max(1, (top - bottom) / 2 * s)
-	if self.shape == "circle" then
+	-- Square and circle fit the shorter side
+	if self.shape == "circle" or self.shape == "square" then
 		local r = math.min(hx, hy)
 		hx, hy = r, r
 	end
@@ -84,7 +90,7 @@ function IndicatorArea:PointAt(dx, dy, cx, cy, hx, hy)
 	dx, dy = dx / len, dy / len
 
 	local t
-	if self.shape == "rectangle" then
+	if self:IsBoxShape() then
 		local tx = math.abs(dx) > 1e-6 and hx / math.abs(dx) or math.huge
 		local ty = math.abs(dy) > 1e-6 and hy / math.abs(dy) or math.huge
 		t = math.min(tx, ty)
@@ -97,7 +103,7 @@ end
 -- Evenly spaced points around the outline (for the preview)
 function IndicatorArea:SampleOutline(cx, cy, hx, hy, count)
 	local points = {}
-	if self.shape == "rectangle" then
+	if self:IsBoxShape() then
 		local perimeter = 4 * (hx + hy)
 		for i = 0, count - 1 do
 			local d = perimeter * i / count

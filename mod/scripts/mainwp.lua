@@ -38,6 +38,7 @@ local DIRECTION_LINE_MAX_RANGE = 5
 local DIRECTION_LINE_SCALE = 0.6
 local CLOSEST_WAYPOINT_INITIAL_DIST = 9999
 local HIDDEN_FLAG_ALPHA = 0.5
+local SORT_REFRESH_INTERVAL = 0.5 -- seconds between closest-first re-sorts
 
 -- Helper function to calculate squared distance (avoids sqrt for comparisons)
 local function GetSquaredDistance(point1, point2)
@@ -55,6 +56,9 @@ local MainWp = Class(NPanel, function(self, w, h, skin, showCoordinates, disable
 	self.showCoordinates = showCoordinates or false
 	self.disableAutoTravel = disableAutoTravel or false
 	self.mapIconMode = "all" -- "all" | "visible" | "off", see SetMapIconMode
+	self.sortMode = "manual" -- "manual" (stored order) | "distance" (closest first), see SetSortMode
+	self.displayOrder = {} -- indices into self.waypoints, in list order
+	self.nextSortTime = 0
 	self.colourVariety = colourVariety or 8
 
 	-- editMode removed - functionality moved to edit modal
@@ -345,6 +349,22 @@ function MainWp:OnUpdate_PlayerPosition(point)
 	if self.showCoordinates then
 		self.lblXZ:SetString(math.floor(point.x) .. " " .. math.floor(point.z))
 	end
+
+	-- Closest-first: re-sort as you walk (only redraws when the order changes)
+	if self.sortMode == "distance" and GetTime() >= self.nextSortTime then
+		self.nextSortTime = GetTime() + SORT_REFRESH_INTERVAL
+		local order = self:GetDisplayOrder()
+		local changed = #order ~= #self.displayOrder
+		for i = 1, #order do
+			if order[i] ~= self.displayOrder[i] then
+				changed = true
+				break
+			end
+		end
+		if changed then
+			self:RefreshList()
+		end
+	end
 	
 	local pageSize = #self.listWaypoint
 	for i = 1, pageSize do
@@ -400,8 +420,21 @@ end
 
 function MainWp:Add()
 	local x,y,z = Compatibility:ThePlayer().Transform:GetWorldPosition()
+	self:AddWaypointAt(x,y,z)
+	if self.sortMode == "distance" then
+		-- You're standing on it, so it's at the top
+		self.pageIndex = 1
+		self:UpdateList()
+	else
+		self:LastPage()
+	end
+end
+
+-- Creates a waypoint (random colour; generated name unless given) with its map
+-- icon and indicator. Doesn't refresh the list: call UpdateList/LastPage after.
+function MainWp:AddWaypointAt(x,y,z,name)
 	local waypoint = Waypoint(
-		self:GenerateName(x,y,z),
+		name or self:GenerateName(x,y,z),
 		{["x"]=x,["y"]=y,["z"]=z},
 		{
 			r=math.random()*.7+.3,
@@ -414,8 +447,7 @@ function MainWp:Add()
 	if self.markerMode then
 		self:AddMarker(waypoint)
 	end
-	
-	self:LastPage()
+	return waypoint
 end
 
 -- "<Random adjective> <Ground type>" for a position
@@ -484,6 +516,7 @@ function MainWp:ToggleHidden(wid)
 end
 
 function MainWp:MoveUp(wid)
+	if self.sortMode ~= "manual" then return end -- manual order only
 	if wid > 1 and wid <= #self.waypoints then
 		-- Swap waypoints
 		local temp = self.waypoints[wid-1]
@@ -511,6 +544,7 @@ function MainWp:MoveUp(wid)
 end
 
 function MainWp:MoveDown(wid)
+	if self.sortMode ~= "manual" then return end -- manual order only
 	if wid >= 1 and wid < #self.waypoints then
 		-- Swap waypoints
 		local temp = self.waypoints[wid+1]
@@ -553,6 +587,7 @@ function MainWp:Edit(wid)
 		local dialog_x = mainwp_right_edge + spacing + (dialog_width / 2)
 		self.dialogEdit:SetPosition(dialog_x, 20)
 		self.dialogEdit:SetWaypoint(waypoint)
+		self.dialogEdit:SetManualSortEnabled(self.sortMode == "manual")
 		-- Store waypoint ID and MainWp reference for move/toggle operations
 		self.dialogEdit.waypoint_id = wid
 		self.dialogEdit.mainwp = self
@@ -900,6 +935,9 @@ function MainWp:AddMapIcon(waypoint)
 			local root = inst:AddChild(NPanel("MapIconRoot"))
 			
 			local icon = root:AddChild(ImageButton("images/flag.xml","flag.tex","flag.tex","flag.tex"))
+			-- Used by NMapWidget for controller "hover" (icon under the map crosshair)
+			root.button = icon
+			root.waypointName = waypoint.name
 			icon:SetScale(.2)
 			icon:SetNormalScale(.9)
 			icon:SetFocusScale(1)
@@ -920,6 +958,9 @@ function MainWp:AddMapIcon(waypoint)
 				icon:SetOnClick(function()
 					self:MovePlayerTo(waypoint)
 				end)
+				root.travel = function()
+					self:MovePlayerTo(waypoint)
+				end
 			end
 
 			local label = root:AddChild(Text(TALKINGFONT, 25, waypoint.name))
@@ -1081,6 +1122,24 @@ function MainWp:ToggleMarkerMode()
 		end
 		print("[waypoint] markers added.")
 	end
+	-- Remember for this world (not while the Indicator area preview forces them on)
+	if not self.indicatorsForcedForPreview then
+		self:SaveIndicatorsOn()
+	end
+end
+
+-- Indicators on/off per world, saved next to the waypoints as "<uwid>_indicators"
+function MainWp:GetSavedIndicatorsOn(default)
+	local saved = self.dataContainer:GetValue(self.uwid .. "_indicators")
+	if type(saved) == "boolean" then
+		return saved
+	end
+	return default
+end
+
+function MainWp:SaveIndicatorsOn()
+	self.dataContainer:SetValue(self.uwid .. "_indicators", self.markerMode == true)
+	self.dataContainer:Save()
 end
 
 function MainWp:ToggleMovementPrediction()
@@ -1145,9 +1204,52 @@ function MainWp:CompactWaypoints()
 	self.waypoints = compacted
 end
 
+-- Display order for the list: indices into self.waypoints. Manual = stored
+-- order; distance = closest to the player first (ties keep stored order).
+function MainWp:GetDisplayOrder()
+	local order = {}
+	for i = 1, #self.waypoints do
+		order[i] = i
+	end
+	if self.sortMode == "distance" then
+		local player = Compatibility:ThePlayer()
+		if player ~= nil and player.Transform ~= nil then
+			local px, _, pz = player.Transform:GetWorldPosition()
+			local distSq = {}
+			for i, w in ipairs(self.waypoints) do
+				local dx, dz = (w.coord.x or 0) - px, (w.coord.z or 0) - pz
+				distSq[i] = dx * dx + dz * dz
+			end
+			table.sort(order, function(a, b)
+				if distSq[a] ~= distSq[b] then
+					return distSq[a] < distSq[b]
+				end
+				return a < b
+			end)
+		end
+	end
+	return order
+end
+
+function MainWp:SetSortMode(mode)
+	self.sortMode = mode == "distance" and "distance" or "manual"
+	self.pageIndex = 1
+	if self.dialogEdit ~= nil then
+		self.dialogEdit:SetManualSortEnabled(self.sortMode == "manual")
+	end
+	self:RefreshList()
+end
+
 function MainWp:UpdateList()
+	self:RefreshList()
+	self:SaveData()
+end
+
+-- Redraws the visible page (no saving)
+function MainWp:RefreshList()
 	-- Compact waypoints array first to ensure no gaps
 	self:CompactWaypoints()
+	self.displayOrder = self:GetDisplayOrder()
 	
 	local pageSize = #self.listWaypoint
 	local totalWaypoints = #self.waypoints
@@ -1163,10 +1265,11 @@ function MainWp:UpdateList()
 	end
 	
 	for i=1,pageSize,1 do
-		local wid = (self.pageIndex-1)*pageSize+i
-		local waypoint = self.waypoints[wid]
+		local wid = self.displayOrder[(self.pageIndex-1)*pageSize+i]
+		local waypoint = wid ~= nil and self.waypoints[wid] or nil
 		local li = self.listWaypoint[i]
 		li.currentWaypoint = waypoint
+		li.currentWid = wid
 		
 		-- Display waypoint or hide if nil
 		if waypoint ~= nil then
@@ -1223,7 +1326,6 @@ function MainWp:UpdateList()
 	end
 	
 	self.lblPageIndex:SetString(self.pageIndex .. "/" .. pageCap)
-	self:SaveData()
 end
 
 function MainWp:DisplayWaypoint(li, waypoint)
@@ -1364,7 +1466,7 @@ function MainWp:GetControllerRows(screen)
 	for i, li in ipairs(self.listWaypoint) do
 		local waypoint = li.currentWaypoint
 		if waypoint ~= nil then
-			local wid = (self.pageIndex - 1) * pageSize + i
+			local wid = li.currentWid
 			local function toggleHidden()
 				if self.waypoints[wid] == waypoint then
 					self:ToggleHidden(wid)

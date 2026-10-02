@@ -238,6 +238,17 @@ function DialogEdit:SetWaypoint(waypoint)
 	end
 end
 
+-- Up/Down only make sense with the manual sort order (hidden when sorted by distance)
+function DialogEdit:SetManualSortEnabled(enabled)
+	if enabled then
+		self.btnUp:Show()
+		self.btnDown:Show()
+	else
+		self.btnUp:Hide()
+		self.btnDown:Hide()
+	end
+end
+
 function DialogEdit:UpdateVisibilityButton(hidden)
 	if self.btnToggleVisibility then
 		if hidden then

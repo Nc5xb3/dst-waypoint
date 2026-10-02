@@ -227,7 +227,7 @@ function NIndicator:UpdatePosition(targX, targZ, aim)
         local screenWidth, screenHeight = TheSim:GetScreenSize()
 
         -- Place the indicator where a ray from the centre, in the target's
-        -- on-screen direction, meets the configured shape (rectangle/oval/circle).
+        -- on-screen direction, meets the configured shape (square/rectangle/circle/oval).
         -- Same direction the arrow points in (see PositionArrow).
         local a = (indicatorAngle + 45) * DEGREES
         local dirX, dirY = math.cos(a), -math.sin(a)

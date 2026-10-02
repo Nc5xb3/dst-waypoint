@@ -4,6 +4,7 @@ local require = GLOBAL.require
 -- FOR MOD DEVELOPMENT --
 -- GLOBAL.CHEATS_ENABLED = true
 -- require "debugkeys"
+-- require("waypointdevtools")(env) -- TEST deploy only (dev/scripts): test mode (god/creative/invisible) + c_wpscatter(), c_wpring(), c_wpclear()
 -- c_reset() after changes
 
 -- Load Assets
@@ -103,14 +104,13 @@ if not SUPPORTED_LOCALIZATIONS[LOC] then
 end
 print("[waypoint] localization: " .. LOC)
 local SKIN = GetModConfigData("SKIN_MOD_WAYPOINT", 1)
-local SHOW_WAYPOINT_INDICATORS = NormalizeBoolean(GetModConfigData("SHOW_WAYPOINT_INDICATORS", true), true)
-local ENABLE_CONTROLLER_SUPPORT = NormalizeBoolean(GetModConfigData("ENABLE_CONTROLLER_SUPPORT", true), true)
+-- Controller support is always on (its modinfo option is commented out; set
+-- this to false to switch every controller hook off)
+local ENABLE_CONTROLLER_SUPPORT = true
 -- Keybinds are now configured in-game via the keybind dialog
 -- Defaults: toggle_ui = 120 (X), toggle_indicators = 0 (None)
 local KEY = 120  -- Default to X key
 local KEY_INDICATORS = 0  -- Default to None
-local WIDTH = GetModConfigData("WIDTH_MOD_WAYPOINT", 360)
-local HEIGHT = GetModConfigData("HEIGHT_MOD_WAYPOINT", 480)
 local COLOUR_VARIETY = GetModConfigData("COLOUR_PALETTE_VARIETY", 8)
 local ALWAYS_SHOW_MP = NormalizeBoolean(GetModConfigData("ALWAYS_SHOW_MP_WAYPOINT", false), false)
 
@@ -125,24 +125,37 @@ local PersistentData = require "persistentdata"
 local WAYPOINT_SETTINGS = {
 	show_hud_button = true,
 	map_icons = "all",        -- "all" | "visible" (hide hidden waypoints) | "off"
+	sort = "manual",          -- "manual" (your order, Up/Down) | "distance" (closest first)
 	show_coordinates = false,
 	click_to_travel = true,
-	indicator_shape = "rectangle", -- "rectangle" | "ellipse" | "circle"
-	indicator_names = "always",    -- "always" | "hover" (indicator name only while hovering)
-	indicator_area_size = 50,      -- percent, 30-100 in steps of 10 (renamed from indicator_size so earlier 100% saves reset to 50)
+	indicator_shape = "ellipse", -- "square" | "rectangle" | "circle" | "ellipse"
+	indicator_names = "hover",     -- "always" | "hover" (indicator name only while hovering)
+	indicator_area_size = 80,      -- percent, 30-100 in steps of 10 (renamed from indicator_size so early test saves reset)
+	window_width = 360,            -- waypoint window size, WINDOW_SIZE_MIN-MAX in steps of WINDOW_SIZE_STEP
+	window_height = 480,           -- (were the modinfo options WIDTH/HEIGHT_MOD_WAYPOINT)
 }
+-- Defaults for "Reset to default" (copied before saved settings are loaded)
+local DEFAULT_WAYPOINT_SETTINGS = {}
+for k, v in pairs(WAYPOINT_SETTINGS) do DEFAULT_WAYPOINT_SETTINGS[k] = v end
+local WINDOW_SIZE_MIN, WINDOW_SIZE_MAX, WINDOW_SIZE_STEP = 300, 600, 60
 local MAP_ICON_MODES = { all = true, visible = true, off = true }
 local IndicatorArea = require "indicatorarea"
 
 local function SanitizeSetting(key, value)
 	if key == "map_icons" then
 		return MAP_ICON_MODES[value] and value or nil
+	elseif key == "sort" then
+		return (value == "manual" or value == "distance") and value or nil
 	elseif key == "indicator_shape" then
 		return IndicatorArea:IsValidShape(value) and value or nil
 	elseif key == "indicator_names" then
 		return (value == "always" or value == "hover") and value or nil
 	elseif key == "indicator_area_size" then
 		return IndicatorArea:ClampSize(value)
+	elseif key == "window_width" or key == "window_height" then
+		if type(value) ~= "number" then return nil end
+		value = WINDOW_SIZE_MIN + math.floor((value - WINDOW_SIZE_MIN) / WINDOW_SIZE_STEP + .5) * WINDOW_SIZE_STEP
+		return math.max(WINDOW_SIZE_MIN, math.min(WINDOW_SIZE_MAX, value))
 	elseif WAYPOINT_SETTINGS[key] ~= nil and type(value) == "boolean" then
 		return value
 	end
@@ -156,13 +169,24 @@ local function SaveSettings()
 	settingsData:Save()
 end
 
+local function OldModinfoValue(name)
+	local ok, v = GLOBAL.pcall(GetModConfigData, name, true)
+	if ok then return v end
+	return nil
+end
+
+-- Window size used to be the modinfo options WIDTH/HEIGHT_MOD_WAYPOINT
+local function MigrateOldWindowSize()
+	local w = SanitizeSetting("window_width", ExtractConfigData(OldModinfoValue("WIDTH_MOD_WAYPOINT")))
+	local h = SanitizeSetting("window_height", ExtractConfigData(OldModinfoValue("HEIGHT_MOD_WAYPOINT")))
+	if w ~= nil then WAYPOINT_SETTINGS.window_width = w end
+	if h ~= nil then WAYPOINT_SETTINGS.window_height = h end
+end
+
 -- First run only: carry over values from the old modinfo options if the game still has them
 local function MigrateOldModinfoSettings()
-	local function old(name)
-		local ok, v = GLOBAL.pcall(GetModConfigData, name, true)
-		if ok then return v end
-		return nil
-	end
+	local old = OldModinfoValue
+	MigrateOldWindowSize()
 	local v = old("HIDE_HUD_ICON_WAYPOINT")
 	if v ~= nil then WAYPOINT_SETTINGS.show_hud_button = not NormalizeBoolean(v, false) end
 	v = old("DISABLE_CUSTOM_MAP_ICONS_WAYPOINT")
@@ -184,6 +208,10 @@ settingsData:Load(function()
 				WAYPOINT_SETTINGS[key] = value
 			end
 		end
+		-- Saved before window size moved here: take it from the old modinfo options
+		if saved.window_width == nil and saved.window_height == nil then
+			MigrateOldWindowSize()
+		end
 	else
 		MigrateOldModinfoSettings()
 	end
@@ -201,6 +229,10 @@ IndicatorArea.namesOnHover = WAYPOINT_SETTINGS.indicator_names == "hover"
 local keybindData = PersistentData("waypoint_keybinds")
 
 local WAYPOINT_KEYBINDS = {
+	toggle_ui = KEY,
+	toggle_indicators = KEY_INDICATORS,
+}
+local DEFAULT_KEYBINDS = {
 	toggle_ui = KEY,
 	toggle_indicators = KEY_INDICATORS,
 }
@@ -635,12 +667,18 @@ local function UpdateHudButton(controls)
 	end
 end
 
+local RebuildWaypointUI -- defined below (needs AddMod's helpers)
+
 local function ApplySetting(controls, key)
 	local waypoint = controls.waypoint
-	if key == "show_hud_button" then
+	if key == "window_width" or key == "window_height" then
+		RebuildWaypointUI(controls)
+	elseif key == "show_hud_button" then
 		UpdateHudButton(controls)
 	elseif key == "map_icons" then
 		waypoint:SetMapIconMode(WAYPOINT_SETTINGS.map_icons)
+	elseif key == "sort" then
+		waypoint:SetSortMode(WAYPOINT_SETTINGS.sort)
 	elseif key == "show_coordinates" then
 		waypoint:SetShowCoordinates(WAYPOINT_SETTINGS.show_coordinates)
 	elseif key == "click_to_travel" then
@@ -653,39 +691,166 @@ local function ApplySetting(controls, key)
 	end
 end
 
+-- Builds the waypoint window (+ its indicator layer) and the accessors the
+-- dialogs use. Called on HUD creation and again when the window size changes.
+local function CreateWaypointUI(controls)
+	local MainWp = require "mainwp"
+	local NIndicatorManager = require "widgets/nindicatormanager"
+
+	controls.waypoint = controls.top_root:AddChild(
+		MainWp(
+			WAYPOINT_SETTINGS.window_width,
+			WAYPOINT_SETTINGS.window_height,
+			SKIN,
+			WAYPOINT_SETTINGS.show_coordinates,
+			not WAYPOINT_SETTINGS.click_to_travel,
+			COLOUR_VARIETY
+		)
+	)
+	controls.waypoint:SetConfiguration(ALWAYS_SHOW_MP)
+	controls.waypoint:SetMapIconMode(WAYPOINT_SETTINGS.map_icons)
+	controls.waypoint:SetSortMode(WAYPOINT_SETTINGS.sort)
+	controls.waypoint.im = controls.top_root:AddChild(NIndicatorManager())
+	controls.waypoint.im:MoveToBack()
+	controls.waypoint:Hide(true)
+	if controls.waypointHudScale ~= nil then
+		controls.waypoint:SetScale(controls.waypointHudScale)
+	end
+
+	-- Expose keybind accessors to the MainWp instance so the dialog can edit them
+	controls.waypoint.getKeybinds = function()
+		return {
+			toggle_ui = WAYPOINT_KEYBINDS.toggle_ui,
+			toggle_indicators = WAYPOINT_KEYBINDS.toggle_indicators,
+		}
+	end
+	controls.waypoint.setKeybinds = function(newbinds)
+		if type(newbinds) ~= "table" then return end
+		if newbinds.toggle_ui ~= nil then
+			WAYPOINT_KEYBINDS.toggle_ui = newbinds.toggle_ui
+		end
+		if newbinds.toggle_indicators ~= nil then
+			WAYPOINT_KEYBINDS.toggle_indicators = newbinds.toggle_indicators
+		end
+		SaveKeybinds()
+		UpdateHudIconTooltip()
+	end
+
+	-- Expose in-game settings to the Configurations dialog
+	controls.waypoint.getSettings = function()
+		local copy = {}
+		for k, v in pairs(WAYPOINT_SETTINGS) do copy[k] = v end
+		return copy
+	end
+	controls.waypoint.setSetting = function(key, value)
+		local sanitized = SanitizeSetting(key, value)
+		if sanitized == nil or sanitized == WAYPOINT_SETTINGS[key] then return end
+		WAYPOINT_SETTINGS[key] = sanitized
+		SaveSettings()
+		ApplySetting(controls, key)
+	end
+	controls.waypoint.getWindowSizeRange = function()
+		return WINDOW_SIZE_MIN, WINDOW_SIZE_MAX, WINDOW_SIZE_STEP
+	end
+	-- "Reset to default": every setting in the Configurations dialog, keybinds included
+	controls.waypoint.resetSettings = function()
+		local sizeChanged = WAYPOINT_SETTINGS.window_width ~= DEFAULT_WAYPOINT_SETTINGS.window_width
+			or WAYPOINT_SETTINGS.window_height ~= DEFAULT_WAYPOINT_SETTINGS.window_height
+		for k, v in pairs(DEFAULT_WAYPOINT_SETTINGS) do
+			WAYPOINT_SETTINGS[k] = v
+		end
+		SaveSettings()
+		WAYPOINT_KEYBINDS.toggle_ui = DEFAULT_KEYBINDS.toggle_ui
+		WAYPOINT_KEYBINDS.toggle_indicators = DEFAULT_KEYBINDS.toggle_indicators
+		SaveKeybinds()
+		UpdateHudIconTooltip()
+		for k in pairs(DEFAULT_WAYPOINT_SETTINGS) do
+			if k ~= "window_width" and k ~= "window_height" then
+				ApplySetting(controls, k)
+			end
+		end
+		if sizeChanged then
+			RebuildWaypointUI(controls)
+		end
+	end
+end
+
+-- New window size: rebuild the window. Deferred a frame because this runs from
+-- a button inside the window being replaced. Keeps indicators on/off, and if
+-- the window was open, reopens it with Configurations (and controller mode).
+RebuildWaypointUI = function(controls)
+	local old = controls.waypoint
+	if old == nil or old.rebuildPending then
+		return
+	end
+	old.rebuildPending = true
+	local wasShown = old.shown
+	local withController = old.controllerScreen ~= nil
+	-- Keep the controller cursor on the same Configurations item
+	local focusId = nil
+	if withController and old.controllerScreen.CurrentNode ~= nil then
+		local node = old.controllerScreen:CurrentNode()
+		focusId = node ~= nil and node.id or nil
+	end
+	controls.inst:DoTaskInTime(0, function()
+		if controls.waypoint ~= old then
+			return
+		end
+		if old.CloseControllerScreen ~= nil then
+			old:CloseControllerScreen() -- also closes its dialogs
+		end
+		local markerMode = old.markerMode
+		old:CleanupWorldObjects()
+		if old.im ~= nil then
+			old.im:Kill()
+		end
+		old:Kill()
+
+		CreateWaypointUI(controls)
+		local waypoint = controls.waypoint
+		if markerMode then
+			waypoint:ToggleMarkerMode()
+		end
+		if wasShown then
+			waypoint:Show(true)
+			waypoint:OpenConfigDialog()
+			if withController then
+				waypoint:OpenWithController()
+				if focusId ~= nil and waypoint.controllerScreen ~= nil and waypoint.dialogConfig ~= nil then
+					waypoint.controllerScreen:FocusId(focusId, waypoint.dialogConfig)
+					waypoint.controllerScreen:Refresh()
+				end
+			end
+		end
+	end)
+end
+
+-- Indicators in a world with nothing saved yet. The modinfo option
+-- SHOW_WAYPOINT_INDICATORS was removed; its old value is used if the game still reports it.
+local function DefaultIndicatorsOn()
+	local old = OldModinfoValue("SHOW_WAYPOINT_INDICATORS")
+	if old == nil then
+		return true
+	end
+	return NormalizeBoolean(ExtractConfigData(old), true)
+end
+
 -- Post Construct and Key Handlers
 local function AddMod(controls)
 	controls.inst:DoTaskInTime(0, function()
-		local MainWp = require "mainwp"
-		local NIndicatorManager = require "widgets/nindicatormanager"
-
 		-- If the HUD was rebuilt, clean up world entities left by the previous UI
 		if activeControls ~= nil and activeControls ~= controls and activeControls.waypoint ~= nil then
 			activeControls.waypoint:CleanupWorldObjects()
 		end
 		activeControls = controls
 
-		controls.waypoint = controls.top_root:AddChild(
-			MainWp(
-				WIDTH,
-				HEIGHT,
-				SKIN,
-				WAYPOINT_SETTINGS.show_coordinates,
-				not WAYPOINT_SETTINGS.click_to_travel,
-				COLOUR_VARIETY
-			)
-		)
-		controls.waypoint:SetConfiguration(ALWAYS_SHOW_MP)
-		controls.waypoint:SetMapIconMode(WAYPOINT_SETTINGS.map_icons)
-		controls.waypoint.im = controls.top_root:AddChild(NIndicatorManager())
-		controls.waypoint.im:MoveToBack()
-		controls.waypoint:Hide()
+		CreateWaypointUI(controls)
 
 		-- Continuous update to player's position
 		local base_OnUpdate = controls.OnUpdate
 		controls.OnUpdate = function(self, dt)
 			base_OnUpdate(self, dt)
-			if controls.waypoint:IsVisible() then
+			if controls.waypoint ~= nil and controls.waypoint:IsVisible() then
 				local p = GLOBAL.Point(ThePlayer().Transform:GetWorldPosition())
 				controls.waypoint:OnUpdate_PlayerPosition(p)
 			end
@@ -694,45 +859,13 @@ local function AddMod(controls)
 		RegisterHotkeys()
 		RegisterControllerControls()
 
-		-- Expose keybind accessors to the MainWp instance so the dialog can edit them
-		controls.waypoint.getKeybinds = function()
-			return {
-				toggle_ui = WAYPOINT_KEYBINDS.toggle_ui,
-				toggle_indicators = WAYPOINT_KEYBINDS.toggle_indicators,
-			}
-		end
-		controls.waypoint.setKeybinds = function(newbinds)
-			if type(newbinds) ~= "table" then return end
-			if newbinds.toggle_ui ~= nil then
-				WAYPOINT_KEYBINDS.toggle_ui = newbinds.toggle_ui
-			end
-			if newbinds.toggle_indicators ~= nil then
-				WAYPOINT_KEYBINDS.toggle_indicators = newbinds.toggle_indicators
-			end
-			SaveKeybinds()
-			UpdateHudIconTooltip()
-		end
-
 		-- HUD Icon (setting: show_hud_button)
 		UpdateHudButton(controls)
-
-		-- Expose in-game settings to the Configurations dialog
-		controls.waypoint.getSettings = function()
-			local copy = {}
-			for k, v in pairs(WAYPOINT_SETTINGS) do copy[k] = v end
-			return copy
-		end
-		controls.waypoint.setSetting = function(key, value)
-			local sanitized = SanitizeSetting(key, value)
-			if sanitized == nil then return end
-			WAYPOINT_SETTINGS[key] = sanitized
-			SaveSettings()
-			ApplySetting(controls, key)
-		end
 
 		-- Update hud size and position on event (best to update through event than overriding PlayerProfile.GetHUDSize)
 		if DST then
 			ThePlayer().HUD.inst:ListenForEvent("refreshhudsize", function(hud, scale)
+				controls.waypointHudScale = scale
 				if controls.waypoint then
 					controls.waypoint:SetScale(scale)
 				end
@@ -743,7 +876,9 @@ local function AddMod(controls)
 		end
 
 
-		if SHOW_WAYPOINT_INDICATORS and controls.waypoint then
+		-- Indicators on/off is remembered per world (on in a world you haven't
+		-- joined before, unless the old "Indicators on at start" option says off)
+		if controls.waypoint and controls.waypoint:GetSavedIndicatorsOn(DefaultIndicatorsOn()) then
 			controls.waypoint:ToggleMarkerMode()
 		end
 
@@ -766,3 +901,5 @@ end
 
 AddClassPostConstruct("widgets/controls", AddMod)
 AddClassPostConstruct("widgets/mapwidget", require "widgets/nmapwidget")
+-- Controller: travel to the waypoint under the map crosshair (Y)
+AddClassPostConstruct("screens/mapscreen", require "widgets/nmapscreen")

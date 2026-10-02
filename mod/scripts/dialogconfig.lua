@@ -19,6 +19,10 @@ local DESC_FONT_SIZE = 17
 local DESC_COLOUR = {.85, .8, .65, 1} -- muted gold, reads as secondary text
 local BUTTON_SCALE = .55
 local MAP_ICON_MODES = { "all", "visible", "off" }
+local SMALL_BUTTON_SCALE = .4          -- Debug info / Reset to default
+local RESET_BUTTON_RIGHT_MARGIN = 75   -- centre of the Reset button from the right edge
+local WINDOW_BUTTON_SCALE = .38        -- width / height buttons share the button column
+local WINDOW_BUTTON_GAP = 42           -- their offset either side of the column centre
 local DialogIndicatorArea = require "dialogindicatorarea"
 
 local DialogConfig = Class(NPanel, function(self, w, h, skin, mainwp)
@@ -30,7 +34,7 @@ local DialogConfig = Class(NPanel, function(self, w, h, skin, mainwp)
 	self.getKeybinds = nil
 	self.setKeybinds = nil
 
-	self:InitialiseComponents(w or 520, h or 500)
+	self:InitialiseComponents(w or 520, h or 600)
 	Styler(skin or 1):ApplyStyle(self)
 	self:RefreshValues()
 end)
@@ -81,7 +85,7 @@ function DialogConfig:InitialiseComponents(w, h)
 	self:AddClass("Frame")
 
 	local box = NBox(self:GetSize())
-	local maxRows = 8
+	local maxRows = 10
 	local strs = Strings()
 
 	-- Title
@@ -109,18 +113,36 @@ function DialogConfig:InitialiseComponents(w, h)
 		strs.MAP_ICONS,
 		function() self:CycleMapIcons() end)
 
+	-- List order: Manual (stored order, Up/Down in the edit dialog) / Closest first
+	self.lblSort, self.descSort, self.btnSort = self:AddSettingRow(box, 5, maxRows,
+		strs.SORT,
+		function() self:CycleSort() end)
+
+	-- Window size: two small buttons (width, height) in the button column.
+	-- Changing either rebuilds the window (see modmain RebuildWaypointUI).
+	self.lblWindowSize, self.descWindowSize, self.btnWindowWidth = self:AddSettingRow(box, 6, maxRows,
+		strs.WINDOW_SIZE,
+		function() self:StepWindowSize("window_width", 1, true) end)
+	local sizeX, sizeY = self.btnWindowWidth:GetPosition().x, box:GridY(6, maxRows)
+	self.btnWindowWidth:SetScale(WINDOW_BUTTON_SCALE, WINDOW_BUTTON_SCALE, WINDOW_BUTTON_SCALE)
+	self.btnWindowWidth:SetPosition(sizeX - WINDOW_BUTTON_GAP, sizeY)
+	self.btnWindowHeight = self:AddChild(ImageButton())
+	self.btnWindowHeight:SetScale(WINDOW_BUTTON_SCALE, WINDOW_BUTTON_SCALE, WINDOW_BUTTON_SCALE)
+	self.btnWindowHeight:SetPosition(sizeX + WINDOW_BUTTON_GAP, sizeY)
+	self.btnWindowHeight:SetOnClick(function() self:StepWindowSize("window_height", 1, true) end)
+
 	-- Coordinates
-	self.lblCoordinates, self.descCoordinates, self.btnCoordinates = self:AddSettingRow(box, 5, maxRows,
+	self.lblCoordinates, self.descCoordinates, self.btnCoordinates = self:AddSettingRow(box, 7, maxRows,
 		strs.COORDINATES,
 		function() self:ToggleBool("show_coordinates") end)
 
 	-- Click flag to travel
-	self.lblTravel, self.descTravel, self.btnTravel = self:AddSettingRow(box, 6, maxRows,
+	self.lblTravel, self.descTravel, self.btnTravel = self:AddSettingRow(box, 8, maxRows,
 		strs.CLICK_TO_TRAVEL,
 		function() self:ToggleBool("click_to_travel") end)
 
 	-- Indicator area: opens its own dialog with a live on-screen preview
-	self.lblIndicatorArea, self.descIndicatorArea, self.btnIndicatorArea = self:AddSettingRow(box, 7, maxRows,
+	self.lblIndicatorArea, self.descIndicatorArea, self.btnIndicatorArea = self:AddSettingRow(box, 9, maxRows,
 		strs.INDICATOR_AREA,
 		function()
 			if self.mainwp then
@@ -131,10 +153,17 @@ function DialogConfig:InitialiseComponents(w, h)
 
 	-- Debug info (small, out of the way)
 	self.btnDebug = self:AddChild(ImageButton())
-	self.btnDebug:SetPosition(0, box:GridY(8, maxRows))
-	self.btnDebug:SetScale(.4, .4, .4)
+	self.btnDebug:SetPosition(0, box:GridY(10, maxRows))
+	self.btnDebug:SetScale(SMALL_BUTTON_SCALE, SMALL_BUTTON_SCALE, SMALL_BUTTON_SCALE)
 	self.btnDebug:SetText(strs.DEBUG_BUTTON)
 	self.btnDebug:SetOnClick(function() self:ShowDebugInfo() end)
+
+	-- Reset to default (same size, bottom right)
+	self.btnReset = self:AddChild(ImageButton())
+	self.btnReset:SetPosition(box:W() / 2 - RESET_BUTTON_RIGHT_MARGIN, box:GridY(10, maxRows))
+	self.btnReset:SetScale(SMALL_BUTTON_SCALE, SMALL_BUTTON_SCALE, SMALL_BUTTON_SCALE)
+	self.btnReset:SetText(strs.RESET_BUTTON)
+	self.btnReset:SetOnClick(function() self:ConfirmReset() end)
 
 	-- Close button
 	self.btnClose = self:AddChild(ImageButton())
@@ -187,6 +216,52 @@ local function KeyName(keycode)
 end
 
 -- Button text = current value; description = what that value does
+-- Window width/height in steps; wrap = cycle past the max back to the min (clicks)
+function DialogConfig:StepWindowSize(key, dir, wrap)
+	local min, max, step = 300, 600, 60
+	if self.mainwp and self.mainwp.getWindowSizeRange then
+		min, max, step = self.mainwp.getWindowSizeRange()
+	end
+	local value = (self:GetSettings()[key] or min) + dir * step
+	if value > max then
+		value = wrap and min or max
+	elseif value < min then
+		value = wrap and max or min
+	end
+	self:SetSetting(key, value)
+end
+
+-- Ask first, then put every setting (and keybind) back to its default
+function DialogConfig:ConfirmReset()
+	local strs = Strings()
+	local PopupDialogScreen = Compatibility:PopupDialogScreen()
+	local popup
+	popup = PopupDialogScreen(
+		strs.RESET_TITLE,
+		strs.RESET_MESSAGE,
+		{
+			{text = strs.RESET_CONFIRM, cb = function()
+				TheFrontEnd:PopScreen(popup)
+				if self.mainwp and self.mainwp.resetSettings then
+					self.mainwp.resetSettings()
+				end
+				if self.inst:IsValid() then
+					self:RefreshValues()
+				end
+			end},
+			{text = STRINGS.WAYPOINT.UI.DIALOG.OPTION.CANCEL, cb = function()
+				TheFrontEnd:PopScreen(popup)
+			end},
+		}
+	)
+	TheFrontEnd:PushScreen(popup)
+end
+
+function DialogConfig:CycleSort()
+	local current = self:GetSettings().sort or "manual"
+	self:SetSetting("sort", current == "distance" and "manual" or "distance")
+end
+
 function DialogConfig:RefreshValues()
 	local strs = Strings()
 	local settings = self:GetSettings()
@@ -200,6 +275,18 @@ function DialogConfig:RefreshValues()
 	self.btnHudButton:SetText(onoff(settings.show_hud_button))
 	self.descHudButton:SetString(settings.show_hud_button and strs.HUD_BUTTON_DESC_ON or strs.HUD_BUTTON_DESC_OFF)
 
+	self.btnWindowWidth:SetText(tostring(settings.window_width or 360))
+	self.btnWindowHeight:SetText(tostring(settings.window_height or 480))
+	self.descWindowSize:SetString(strs.WINDOW_SIZE_DESC)
+
+	if settings.sort == "distance" then
+		self.btnSort:SetText(strs.SORT_DISTANCE)
+		self.descSort:SetString(strs.SORT_DESC_DISTANCE)
+	else
+		self.btnSort:SetText(strs.SORT_MANUAL)
+		self.descSort:SetString(strs.SORT_DESC_MANUAL)
+	end
+
 	self.btnCoordinates:SetText(onoff(settings.show_coordinates))
 	self.descCoordinates:SetString(settings.show_coordinates and strs.COORDINATES_DESC_ON or strs.COORDINATES_DESC_OFF)
 
@@ -207,8 +294,8 @@ function DialogConfig:RefreshValues()
 	self.descTravel:SetString(settings.click_to_travel and strs.CLICK_TO_TRAVEL_DESC_ON or strs.CLICK_TO_TRAVEL_DESC_OFF)
 
 	self.descIndicatorArea:SetString(string.format(strs.INDICATOR_AREA_DESC,
-		DialogIndicatorArea.ShapeName(settings.indicator_shape or "rectangle"),
-		tostring(settings.indicator_area_size or 50)))
+		DialogIndicatorArea.ShapeName(settings.indicator_shape or "ellipse"),
+		tostring(settings.indicator_area_size or 80)))
 
 	local mode = settings.map_icons or "all"
 	if mode == "visible" then
@@ -274,10 +361,16 @@ function DialogConfig:GetControllerRows(screen)
 		{ { id = "keybinds", widget = self.btnKeybinds } },
 		{ { id = "hud", widget = self.btnHudButton } },
 		{ { id = "map", widget = self.btnMapIcons } },
+		{ { id = "sort", widget = self.btnSort } },
+		{
+			-- A cycles the size (like a click); left/right moves between the two
+			{ id = "width", widget = self.btnWindowWidth, hint = Strings().WINDOW_WIDTH },
+			{ id = "height", widget = self.btnWindowHeight, hint = Strings().WINDOW_HEIGHT },
+		},
 		{ { id = "coords", widget = self.btnCoordinates } },
 		{ { id = "travel", widget = self.btnTravel } },
 		{ { id = "area", widget = self.btnIndicatorArea } },
-		{ { id = "debug", widget = self.btnDebug } },
+		{ { id = "debug", widget = self.btnDebug }, { id = "reset", widget = self.btnReset } },
 		{ { id = "close", widget = self.btnClose } },
 	}
 end

@@ -5,9 +5,12 @@
 
 .DESCRIPTION
     1. Mirrors .\mod -> <DST>\mods\waypoint (stale files in the target are removed).
-    2. In the COPY only (never the repo):
+    2. Copies .\dev\scripts\* (test-only tools) into the copy's scripts folder.
+    3. In the COPY only (never the repo):
          - modinfo.lua : name = "Waypoint Mod (TEST)"
          - modmain.lua : uncomments  GLOBAL.CHEATS_ENABLED = true
+         - modmain.lua : uncomments  require("waypointdevtools")(env)
+                         (test mode: god + creative + invisible on spawn; console: c_wphelp())
     Files are read/written as UTF-8 without BOM and line endings are preserved.
 
 .PARAMETER Destination
@@ -47,7 +50,17 @@ if ($rc -ge 8) {
 }
 $global:LASTEXITCODE = 0
 
-# --- 2. Patch the copy for testing ----------------------------------------
+# --- 2. Test-only scripts ---------------------------------------------------
+# dev\scripts is never part of mod\ (the folder that gets uploaded), so these
+# only exist in the test copy. Copied after the mirror, so /MIR above removes
+# them first and this puts the current version back.
+$DevScripts = Join-Path $PSScriptRoot 'dev\scripts'
+if (Test-Path $DevScripts) {
+    Copy-Item -Path (Join-Path $DevScripts '*') -Destination (Join-Path $Destination 'scripts') -Recurse -Force
+    Write-Host "Copied dev\scripts -> scripts (test-only tools)" -ForegroundColor Green
+}
+
+# --- 3. Patch the copy for testing ----------------------------------------
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 function Update-File {
@@ -80,5 +93,13 @@ Update-File -Path (Join-Path $Destination 'modmain.lua') `
     -Replacement '$1$2' `
     -Description 'GLOBAL.CHEATS_ENABLED = true'
 
+# modmain.lua -> load the test-only tools (dev\scripts\waypointdevtools.lua):
+# test mode (god + creative + invisible) and c_wpscatter / c_wpring / c_wpclear
+Update-File -Path (Join-Path $Destination 'modmain.lua') `
+    -Pattern '^([ \t]*)--[ \t]*(require\("waypointdevtools"\)\(env\))' `
+    -Replacement '$1$2' `
+    -Description 'require("waypointdevtools")(env) (test mode + c_wp* commands)'
+
 Write-Host ""
 Write-Host "Done. Enable 'Waypoint Mod (TEST)' in DST > Mods (disable the Workshop copy to avoid loading both)." -ForegroundColor Cyan
+Write-Host "Test mode (god, creative, invisible) turns on when you spawn. Commands: console (~) on Local (Ctrl), c_wphelp()." -ForegroundColor Cyan

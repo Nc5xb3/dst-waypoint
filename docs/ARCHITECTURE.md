@@ -17,6 +17,7 @@ dst-waypoint/
 │   ├── stringlocalization_{en,jp,ru,zh,ko,pt}.lua   UI strings (global WAYPOINT table)
 │   ├── images/              .tex textures + .xml atlases
 │   └── scripts/             Lua modules, resolved by require "<path>"
+├── dev/scripts/             test-only scripts, copied into the TEST deploy only (never in mod/)
 ├── docs/                    these docs
 ├── deploy-test.ps1 / .bat   copy mod/ into DST as a test build
 └── README.md
@@ -61,7 +62,8 @@ Only `mod/` is copied to the game. `scripts/` inside it is added to the Lua sear
 | `widgets/npanel.lua` | `Widget` with a size and class list – base of all mod UI. |
 | `widgets/nindicator*.lua` | Off-screen indicators (based on DS `targetindicator.lua`), clickable to travel. Placed where a ray from the screen centre, in the target's direction, meets the indicator area. |
 | `indicatorarea.lua` | Shared indicator-area settings + geometry (shape, size, screen-edge buffers, ray/outline maths). |
-| `dialogindicatorarea.lua` | Compact Indicator area panel (bottom-right, above the HUD buttons; position scaled with the UI): shape (Rectangle/Oval/Circle), size (30–100 %), names (Always/On hover), live dotted outline on the indicator layer. The outline is where indicator flag centres sit. While open, MainWp hides its other windows and turns indicators on (restored on close). |
+| `dialogindicatorarea.lua` | Compact Indicator area panel (bottom-right, above the HUD buttons; position scaled with the UI): shape (Square/Rectangle/Circle/Oval), size (30–100 %), names (Always/On hover), live dotted outline on the indicator layer. The outline is where indicator flag centres sit. While open, MainWp hides its other windows and turns indicators on (restored on close). |
+| `widgets/nmapscreen.lua` | Post-construct for `MapScreen`: controller Y travels to the hovered map icon, help bar entry (see *Map (controller)*). |
 | `widgets/nmapwidget.lua` | Post-construct for `MapWidget`: positions custom icons each frame using the game's own projection (`minimap:WorldPosToMapPos`), so rotation, zoom and panning stay in sync; suppresses icon clicks after a drag. Credit: rezecib's Global Positions. |
 | `widgets/nmapicon*.lua` | Map icon template + manager (templates live on `TheFrontEnd` so they survive map reopen). |
 | `widgets/ninput.lua`, `ncolourpalette.lua`, `nslider.lua` | Small custom widgets. |
@@ -76,18 +78,20 @@ Only `mod/` is copied to the game. `scripts/` inside it is added to the Lua sear
 - All waypoints live in the persistent string **`waypoint`** (client side, not the world save), as a JSON object keyed by **UWID**:
   - `uwid = "waypoint_" .. (TheWorld.meta.session_identifier or seed) [.. "_C" in caves]`
   - Older versions keyed by `seed`; `LoadData()` migrates `waypoint_<seed>` entries into the session-identifier key once.
+- Indicators on/off is remembered **per world** in the same `waypoint` string, key `<uwid>_indicators` (boolean; `MainWp:SaveIndicatorsOn` on every toggle except the Indicator area preview's temporary one, `GetSavedIndicatorsOn` when the HUD is built). A world with nothing saved starts with indicators on (or the old modinfo `SHOW_WAYPOINT_INDICATORS` value if the game still reports it).
 - Keybinds live in **`waypoint_keybinds`**.
 - Persistent strings are stored under `Documents/Klei/DoNotStarveTogether/<id>/client_save/` (Steam cloud may sync them).
 
 ## Behaviour notes / gotchas
 
 - **Travel** requires movement prediction ON (DST: `ThePlayer.components.locomotor` exists only then). Otherwise the MP toggle button is revealed and `DialogMp` explains why.
-- `UpdateList()` also calls `SaveData()` – every page change writes to disk.
+- `UpdateList()` = `RefreshList()` (redraw the page) + `SaveData()` – every page change writes to disk. Use `RefreshList()` for redraws that change nothing (the closest-first re-sort does).
+- **List order** (`sort` setting): `self.waypoints` is always the saved/manual order. The list shows `self.displayOrder` (indices into `self.waypoints`, from `GetDisplayOrder`), and each row keeps its real index in `li.currentWid`, so Edit/Delete/hide always act on the right waypoint. With `distance`, `OnUpdate_PlayerPosition` re-sorts every 0.5 s while the window is open and redraws only if the order changed; Up/Down are hidden in the edit dialog (`DialogEdit:SetManualSortEnabled`) and `MoveUp/MoveDown` do nothing; Add jumps to page 1 (the new waypoint is closest).
 - `pageSize = floor(height / 45) - 2` rows.
 - Indicators (`markerMode`) spawn a `flagplacer` per visible waypoint; toggling off removes them all.
 - `DISABLE_CUSTOM_MAP_ICONS` falls back to the vanilla minimap icon `flagmini.tex` on the `flagplacer` (only exists while indicators are on).
 - Localisations must define every key used in `STRINGS.WAYPOINT` – a missing key shows as blank text (or errors where it's concatenated). Keep all `stringlocalization_*.lua` files in sync with `en`. New language = new file + entry in `SUPPORTED_LOCALIZATIONS`/`GAME_LOCALE_TO_MOD` (modmain) + option in modinfo.
-- The commented "FOR MOD DEVELOPMENT" block in `modmain.lua` (`GLOBAL.CHEATS_ENABLED`, `require "debugkeys"`) is enabled automatically in the test deploy – never ship it uncommented.
+- The commented "FOR MOD DEVELOPMENT" block in `modmain.lua` (`GLOBAL.CHEATS_ENABLED`, `require "debugkeys"`, `require("waypointdevtools")(env)`) is enabled automatically in the test deploy (except `debugkeys`) – never ship it uncommented.
 
 ## Controller support
 
@@ -126,6 +130,12 @@ Text fields (name, X/Z) open the usual `NInputScreen`, which needs a keyboard (D
 
 Highlight sizes use each widget's **own** scale (`inst.UITransform:GetScale()`); `Widget:GetScale()` in DST multiplies in every parent, including the HUD scale.
 
+### Map (controller)
+
+The fullscreen map has no mouse with a controller, only a crosshair in the screen centre (`MapScreen:GetCursorPosition` returns 0,0). `NMapWidget` treats the map icon closest to the centre (within 40 px at 720p) as **hovered**: it's drawn 1.4× larger, its flag button gets `OnGainFocus` (focus look + hover sound), and the tooltip moves above it (`StopFollowMouse`) showing the name, or "Y Travel to <name>" when *Click flag to travel* is on. Only on the real `MapScreen` while it's the active screen (a HUD minimap from another mod also builds a `MapWidget`, with no `mapscreen`).
+
+`widgets/nmapscreen.lua` (post-construct on `screens/mapscreen`) handles **Y** (`CONTROL_MENU_MISC_2`, unused by the map screen; A and X are the game's map actions): it closes the map the same way the game's own map actions do (`_hack_ignore_held_controls`) and calls the icon's `travel` (set by `MainWp:AddMapIcon` only when travel is allowed). It also adds the action to the map's help bar. The icon root exposes `button`, `waypointName` and `travel` for this.
+
 ## Config options (`modinfo.lua`)
 
 Only things that need a restart or are rarely changed stay here:
@@ -134,11 +144,10 @@ Only things that need a restart or are rarely changed stay here:
 |---|---|---|
 | `LOCALIZATION_MOD_WAYPOINT` | `auto` | `auto` (match game language) / `en` / `ru` / `jp` / `zh` / `ko` / `pt` |
 | `SKIN_MOD_WAYPOINT` | `1` | Window style: 0 Plain, 1 DST-like |
-| `WIDTH_MOD_WAYPOINT` / `HEIGHT_MOD_WAYPOINT` | 360 / 480 | window size (300–600) |
-| `SHOW_WAYPOINT_INDICATORS` | `true` | indicators on when joining a world |
 | `COLOUR_PALETTE_VARIETY` | 8 | palette step (lower = more colours) |
 | `ALWAYS_SHOW_MP_WAYPOINT` | false | "Movement prediction button": When needed / Always |
-| `ENABLE_CONTROLLER_SUPPORT` | `true` | controller: social-menu items (and scoreboard LT/RT) to open the window / toggle indicators, and window navigation (see above) |
+
+Removed from modinfo: `SHOW_WAYPOINT_INDICATORS` (indicators are remembered per world now) and `ENABLE_CONTROLLER_SUPPORT` (commented out in `modinfo.lua`; controller support is always on via the `ENABLE_CONTROLLER_SUPPORT = true` constant in `modmain.lua`).
 
 ## In-game settings (Configurations dialog)
 
@@ -147,24 +156,35 @@ Saved per client in the persistent string `waypoint_settings` (`WAYPOINT_SETTING
 | Key | Default | Effect |
 |---|---|---|
 | `show_hud_button` | true | HUD button (never shown with a controller attached) |
+| `window_width` / `window_height` | 360 / 480 | Window size, 300–600 in steps of 60 (two small buttons in one row; click cycles). Changing it **rebuilds** the window: `RebuildWaypointUI` (deferred a frame, since it runs from a button inside the old window) closes the controller screen and dialogs, removes markers/map icons and the indicator layer, kills the old `MainWp` and calls `CreateWaypointUI` again, then restores indicators and, if the window was open, reopens it with Configurations (and controller mode, cursor on the same item). Replaced the modinfo options `WIDTH/HEIGHT_MOD_WAYPOINT`; saves from before are migrated from them if the game still reports them. |
+| `sort` | `manual` | List order: `manual` (your order, Up/Down in the edit dialog) / `distance` (closest first, updates as you move) (`MainWp:SetSortMode`) |
 | `map_icons` | `all` | `all` / `visible` (hide waypoints marked hidden) / `off`; read each time the map opens (`MainWp:ShouldShowMapIcon`) |
 | `show_coordinates` | false | X/Z in the list and footer (`MainWp:SetShowCoordinates`) |
 | `click_to_travel` | true | click a flag (list, indicator, map icon) to walk there (`MainWp:SetClickToTravel`) |
-| `indicator_shape` | `rectangle` | `rectangle` / `ellipse` (Oval) / `circle`; edited in the Indicator area dialog |
-| `indicator_area_size` | 50 | percent of the largest area that fits the screen (30–100, steps of 10). 50 % rectangle ≈ the old placement. (Renamed from `indicator_size` so early test saves reset to 50.) |
-| `indicator_names` | `always` | `always` / `hover`: indicator name label only while hovering the flag (`IndicatorArea.namesOnHover`, read by NIndicator each frame) |
+| `indicator_shape` | `ellipse` (Oval) | `square` / `rectangle` / `circle` / `ellipse` (Oval); square and circle fit the shorter screen side; edited in the Indicator area dialog |
+| `indicator_area_size` | 80 | percent of the largest area that fits the screen (30–100, steps of 10). 50 % rectangle ≈ the old placement. (Renamed from `indicator_size` so early test saves reset.) |
+| `indicator_names` | `hover` | `always` / `hover`: indicator name label only while hovering the flag (`IndicatorArea.namesOnHover`, read by NIndicator each frame) |
 
 These replaced the modinfo options `HIDE_HUD_ICON_WAYPOINT`, `DISABLE_CUSTOM_MAP_ICONS_WAYPOINT`, `SHOW_COORDINATES` and `DISABLE_AUTO_TRAVEL`. On first run (no saved settings) the old values are carried over if the game still reports them. The old "disable custom map icons" fallback to vanilla minimap icons is gone; `map_icons = off` hides them instead.
 
 Debug info (UWID, waypoint count) is behind the small "Debug info" button and shown in a popup.
 
+**Reset to default** (small button, bottom right of Configurations) asks for confirmation, then puts every setting above and the keybinds back to their defaults (`DEFAULT_WAYPOINT_SETTINGS`, copied in modmain before saved settings load; `DEFAULT_KEYBINDS`) via `controls.waypoint.resetSettings`. Waypoints aren't touched. A window size change triggers the rebuild.
+
 ## Dev workflow
 
 1. Edit files in `mod/`.
-2. Run `deploy-test.bat` (or `deploy-test.ps1`) – mirrors `mod/` to `…\Don't Starve Together\mods\waypoint`, renames to **Waypoint Mod (TEST)** and enables cheats in the copy.
+2. Run `deploy-test.bat` (or `deploy-test.ps1`) – mirrors `mod/` to `…\Don't Starve Together\mods\waypoint`, copies `dev/scripts/` into it, renames to **Waypoint Mod (TEST)**, enables cheats and loads the test tools in the copy.
 3. In DST: disable the Workshop "Waypoint Mod", enable "Waypoint Mod (TEST)", host a world.
 4. After further edits: redeploy, then `c_reset()` in the console (~ key) to reload.
-5. Check `Documents\Klei\DoNotStarveTogether\client_log.txt` for `[waypoint]` prints and stack traces.
-6. To publish: upload the **`mod/`** folder (unpatched) with the *Don't Starve Mod Tools* uploader, bumping `version` in `modinfo.lua`.
+5. Test data (TEST build only, `dev/scripts/waypointdevtools.lua`): open the console, switch it to **Local** (Ctrl; this is a client-side mod), then:
+   - `c_wpscatter(count, radius)` – random waypoints on land around you (default 20 within 30 tiles)
+   - `c_wpring(count, radius)` – evenly spaced ring, water included (default 12 at 25 tiles); good for checking indicator shapes
+   - `c_wpclear()` – remove waypoints made by these commands (marked `test = true`, names start with `[T]`); `c_wpclear(true)` removes **all** waypoints
+   - `c_wptestmode(on)` – **test mode** is applied automatically every time your character spawns (join, `c_reset()`, character change): god mode, creative mode (free crafting) and invisible mode (`debugnoattack` tag, mobs don't target you). It *sets* the state rather than toggling like `c_godmode()`/`c_freecrafting()`. God mode can't just be `SetInvincible(true)`: loading protection ends ~1.5 s after you spawn with `SetInvincible(false)` (and many player states do the same on exit), so while test mode is on `health.SetInvincible` is wrapped to keep it on and `minhealth` is 1 (covers damage that ignores invincibility, e.g. drowning); on a world with caves it's sent with remote execute (the host is an admin). `c_wptestmode(false)` turns it off for the session.
+   - `c_wphelp()` – list the commands
+   Test waypoints are saved like normal ones (in that world's UWID), so clear them when done.
+6. Check `Documents\Klei\DoNotStarveTogether\client_log.txt` for `[waypoint]` prints and stack traces.
+7. To publish: upload the **`mod/`** folder (unpatched) with the *Don't Starve Mod Tools* uploader, bumping `version` in `modinfo.lua`.
 
 See [MODDING.md](MODDING.md) for general DST modding reference.

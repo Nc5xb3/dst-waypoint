@@ -1,7 +1,7 @@
 --[[
 DialogIndicatorArea
 Compact panel (bottom-right of the screen) to choose the shape
-(rectangle / oval / circle) and size of the area that off-screen waypoint
+(square / rectangle / circle / oval) and size of the area that off-screen waypoint
 indicators sit on. While open:
   * a dotted outline of the area is drawn on screen,
   * the other waypoint windows are hidden (see MainWp:OpenIndicatorAreaDialog),
@@ -186,7 +186,7 @@ function DialogIndicatorArea:CycleShape(direction)
 end
 
 function DialogIndicatorArea:ToggleNames()
-	local current = self:GetSettings().indicator_names or "always"
+	local current = self:GetSettings().indicator_names or "hover"
 	self:SetSetting("indicator_names", current == "hover" and "always" or "hover")
 end
 
@@ -213,7 +213,9 @@ end
 
 function DialogIndicatorArea.ShapeName(shape)
 	local strs = Strings()
-	if shape == "ellipse" then
+	if shape == "square" then
+		return strs.SHAPE_SQUARE
+	elseif shape == "ellipse" then
 		return strs.SHAPE_ELLIPSE
 	elseif shape == "circle" then
 		return strs.SHAPE_CIRCLE

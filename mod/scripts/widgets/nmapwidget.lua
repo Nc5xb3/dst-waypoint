@@ -11,6 +11,11 @@ local NMapIconTooltip = require "widgets/nmapicontooltip"
 
 local DRAG_MAX_DIST = 10
 
+-- Controller: the map has no mouse, only a crosshair in the screen centre.
+-- The icon closest to it (within this many pixels at 720p) counts as hovered.
+local CONTROLLER_HOVER_RADIUS = 40
+local CONTROLLER_HOVER_SCALE = 1.4
+
 local function NMapWidget(MapWidget)
 	MapWidget.ndragpos = nil
 	MapWidget.nclickable = true
@@ -55,6 +60,15 @@ local function NMapWidget(MapWidget)
 			self.nclickable = true
 		end
 
+		-- Controller hover only on the fullscreen map (not e.g. a HUD minimap
+		-- widget from another mod), and only while it's the active screen
+		local controllerHover = TheInput:ControllerAttached()
+			and self.mapscreen ~= nil and self.mapscreen.name == "MapScreen"
+			and TheFrontEnd:GetActiveScreen() == self.mapscreen
+		local screenW, screenH = TheSim:GetScreenSize()
+		local hoverRadius = CONTROLLER_HOVER_RADIUS * screenH / 720
+		local hovered, hoveredDistSq, hoveredX, hoveredY = nil, hoverRadius * hoverRadius, 0, 0
+
 		-- Update position of all map icons and tooltip
 		local tooltip = ""
 		local scale = 1/self:GetZoom()
@@ -64,12 +78,26 @@ local function NMapWidget(MapWidget)
 			v:UpdatePosition(sx,sy,scale)
 			v:SetClickable(self.nclickable)
 
-			if self.nclickable then
+			if controllerHover then
+				local dx, dy = sx - screenW * .5, sy - screenH * .5
+				local dsq = dx * dx + dy * dy
+				if dsq <= hoveredDistSq then
+					hovered, hoveredDistSq, hoveredX, hoveredY = v, dsq, sx, sy
+				end
+			elseif self.nclickable then
 				local t = v:GetTooltip()
 				if t then
 					tooltip = t
 				end
 			end
+		end
+
+		-- Controller: no floating tooltip (the icon already shows its name, and
+		-- the travel action is in the map's help bar, see NMapScreen)
+		self:NSetControllerHover(hovered)
+		if hovered ~= nil then
+			hovered:UpdatePosition(hoveredX, hoveredY, scale * CONTROLLER_HOVER_SCALE)
+			hovered:MoveToFront()
 		end
 
 		if tooltip ~= nil and tooltip ~= "" then
@@ -78,6 +106,24 @@ local function NMapWidget(MapWidget)
 			end
 		elseif self.ntooltip.text:GetString() ~= "" then
 			self.ntooltip.text:SetString("")
+		end
+	end
+
+	-- Controller: the icon under the crosshair gets the button's focus look
+	-- (MapScreen reads self.nhovered to travel there, see NMapScreen)
+	function MapWidget:NSetControllerHover(icon)
+		if icon == self.nhovered then
+			return
+		end
+		local old = self.nhovered
+		self.nhovered = icon
+		local oldButton = old ~= nil and old.widget ~= nil and old.widget.button or nil
+		if oldButton ~= nil and oldButton.inst:IsValid() then
+			oldButton:OnLoseFocus()
+		end
+		local button = icon ~= nil and icon.widget ~= nil and icon.widget.button or nil
+		if button ~= nil then
+			button:OnGainFocus() -- also plays the hover sound
 		end
 	end
 
