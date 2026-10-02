@@ -52,13 +52,15 @@ Only `mod/` is copied to the game. `scripts/` inside it is added to the Lua sear
 | `waypoint.lua` | Plain model: `name`, `coord {x,y,z}`, `colour {r,g,b}`, `hidden`. |
 | `persistentdata.lua` | Blueberrys' PersistentData v1.2 – JSON in a persistent string (`SavePersistentString`/`TheSim:GetPersistentString`). Non-release branches get the branch name appended to the save name. |
 | `dialogedit.lua` | Edit modal: name, X/Z, colour palette, randomise, move up/down, toggle visibility, delete. |
-| `dialogconfig.lua` | Config modal: opens keybind dialog; shows debug info (UWID, waypoint count). |
+| `dialogconfig.lua` | Configurations modal: keybinds + in-game settings (live), debug info popup. |
 | `dialogkeybinds.lua` + `screens/keybindscreen.lua` | Capture a key (A–Z) or Backspace to clear. |
 | `dialogmp.lua` | Warning shown when travel is attempted with movement prediction off. |
 | `styler.lua` + `util/nstyler.lua` | "CSS-like" skinning of `NPanel`s by class (`Frame`, `ListItem`, …); skin 0 = plain, 1 = DST-like. |
 | `prefabs/flagplacer.lua` | Invisible, non-persistent entity placed at a waypoint; targets for indicators and (fallback) minimap icon. |
 | `widgets/npanel.lua` | `Widget` with a size and class list – base of all mod UI. |
-| `widgets/nindicator*.lua` | Off-screen/edge indicators (based on DS `targetindicator.lua`), clickable to travel. |
+| `widgets/nindicator*.lua` | Off-screen indicators (based on DS `targetindicator.lua`), clickable to travel. Placed where a ray from the screen centre, in the target's direction, meets the indicator area. |
+| `indicatorarea.lua` | Shared indicator-area settings + geometry (shape, size, screen-edge buffers, ray/outline maths). |
+| `dialogindicatorarea.lua` | Compact Indicator area panel (bottom-right, above the HUD buttons; position scaled with the UI): shape (Rectangle/Oval/Circle), size (30–100 %), names (Always/On hover), live dotted outline on the indicator layer. The outline is where indicator flag centres sit. While open, MainWp hides its other windows and turns indicators on (restored on close). |
 | `widgets/nmapwidget.lua` | Post-construct for `MapWidget`: positions custom icons each frame using the game's own projection (`minimap:WorldPosToMapPos`), so rotation, zoom and panning stay in sync; suppresses icon clicks after a drag. Credit: rezecib's Global Positions. |
 | `widgets/nmapicon*.lua` | Map icon template + manager (templates live on `TheFrontEnd` so they survive map reopen). |
 | `widgets/ninput.lua`, `ncolourpalette.lua`, `nslider.lua` | Small custom widgets. |
@@ -107,19 +109,35 @@ Not covered yet: navigating the waypoint window or travelling to a waypoint with
 
 ## Config options (`modinfo.lua`)
 
+Only things that need a restart or are rarely changed stay here:
+
 | Key | Default | Meaning |
 |---|---|---|
 | `LOCALIZATION_MOD_WAYPOINT` | `auto` | `auto` (match game language) / `en` / `ru` / `jp` / `zh` / `ko` / `pt` |
-| `SKIN_MOD_WAYPOINT` | `1` | 0 Plain, 1 DST-like |
-| `SHOW_WAYPOINT_INDICATORS` | `true` | indicators on at start |
-| `ENABLE_CONTROLLER_SUPPORT` | `true` | controller actions on the scoreboard (see below) |
+| `SKIN_MOD_WAYPOINT` | `1` | Window style: 0 Plain, 1 DST-like |
 | `WIDTH_MOD_WAYPOINT` / `HEIGHT_MOD_WAYPOINT` | 360 / 480 | window size (300–600) |
+| `SHOW_WAYPOINT_INDICATORS` | `true` | indicators on when joining a world |
 | `COLOUR_PALETTE_VARIETY` | 8 | palette step (lower = more colours) |
-| `HIDE_HUD_ICON_WAYPOINT` | false | hide HUD button |
-| `DISABLE_CUSTOM_MAP_ICONS_WAYPOINT` | false | use vanilla minimap icon instead |
-| `ALWAYS_SHOW_MP_WAYPOINT` | false | always show MP toggle (DST) |
-| `SHOW_COORDINATES` | false | show X/Z in list and footer |
-| `DISABLE_AUTO_TRAVEL` | false | clicking flags doesn't walk |
+| `ALWAYS_SHOW_MP_WAYPOINT` | false | "Movement prediction button": When needed / Always |
+| `ENABLE_CONTROLLER_SUPPORT` | `true` | controller actions on the scoreboard (see above) |
+
+## In-game settings (Configurations dialog)
+
+Saved per client in the persistent string `waypoint_settings` (`WAYPOINT_SETTINGS` in modmain) and applied immediately via `controls.waypoint.setSetting(key, value)` → `ApplySetting`.
+
+| Key | Default | Effect |
+|---|---|---|
+| `show_hud_button` | true | HUD button (never shown with a controller attached) |
+| `map_icons` | `all` | `all` / `visible` (hide waypoints marked hidden) / `off`; read each time the map opens (`MainWp:ShouldShowMapIcon`) |
+| `show_coordinates` | false | X/Z in the list and footer (`MainWp:SetShowCoordinates`) |
+| `click_to_travel` | true | click a flag (list, indicator, map icon) to walk there (`MainWp:SetClickToTravel`) |
+| `indicator_shape` | `rectangle` | `rectangle` / `ellipse` (Oval) / `circle`; edited in the Indicator area dialog |
+| `indicator_area_size` | 50 | percent of the largest area that fits the screen (30–100, steps of 10). 50 % rectangle ≈ the old placement. (Renamed from `indicator_size` so early test saves reset to 50.) |
+| `indicator_names` | `always` | `always` / `hover`: indicator name label only while hovering the flag (`IndicatorArea.namesOnHover`, read by NIndicator each frame) |
+
+These replaced the modinfo options `HIDE_HUD_ICON_WAYPOINT`, `DISABLE_CUSTOM_MAP_ICONS_WAYPOINT`, `SHOW_COORDINATES` and `DISABLE_AUTO_TRAVEL`. On first run (no saved settings) the old values are carried over if the game still reports them. The old "disable custom map icons" fallback to vanilla minimap icons is gone; `map_icons = off` hides them instead.
+
+Debug info (UWID, waypoint count) is behind the small "Debug info" button and shown in a popup.
 
 ## Dev workflow
 

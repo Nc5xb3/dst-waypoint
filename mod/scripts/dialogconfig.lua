@@ -19,6 +19,7 @@ local DESC_FONT_SIZE = 17
 local DESC_COLOUR = {.85, .8, .65, 1} -- muted gold, reads as secondary text
 local BUTTON_SCALE = .55
 local MAP_ICON_MODES = { "all", "visible", "off" }
+local DialogIndicatorArea = require "dialogindicatorarea"
 
 local DialogConfig = Class(NPanel, function(self, w, h, skin, mainwp)
 	NPanel._ctor(self, "DialogConfig")
@@ -29,7 +30,7 @@ local DialogConfig = Class(NPanel, function(self, w, h, skin, mainwp)
 	self.getKeybinds = nil
 	self.setKeybinds = nil
 
-	self:InitialiseComponents(w or 520, h or 440)
+	self:InitialiseComponents(w or 520, h or 500)
 	Styler(skin or 1):ApplyStyle(self)
 	self:RefreshValues()
 end)
@@ -80,7 +81,7 @@ function DialogConfig:InitialiseComponents(w, h)
 	self:AddClass("Frame")
 
 	local box = NBox(self:GetSize())
-	local maxRows = 7
+	local maxRows = 8
 	local strs = Strings()
 
 	-- Title
@@ -118,9 +119,19 @@ function DialogConfig:InitialiseComponents(w, h)
 		strs.CLICK_TO_TRAVEL,
 		function() self:ToggleBool("click_to_travel") end)
 
+	-- Indicator area: opens its own dialog with a live on-screen preview
+	self.lblIndicatorArea, self.descIndicatorArea, self.btnIndicatorArea = self:AddSettingRow(box, 7, maxRows,
+		strs.INDICATOR_AREA,
+		function()
+			if self.mainwp then
+				self.mainwp:OpenIndicatorAreaDialog()
+			end
+		end)
+	self.btnIndicatorArea:SetText(STRINGS.WAYPOINT.UI.BUTTON.EDIT)
+
 	-- Debug info (small, out of the way)
 	self.btnDebug = self:AddChild(ImageButton())
-	self.btnDebug:SetPosition(0, box:GridY(7, maxRows))
+	self.btnDebug:SetPosition(0, box:GridY(8, maxRows))
 	self.btnDebug:SetScale(.4, .4, .4)
 	self.btnDebug:SetText(strs.DEBUG_BUTTON)
 	self.btnDebug:SetOnClick(function() self:ShowDebugInfo() end)
@@ -194,6 +205,10 @@ function DialogConfig:RefreshValues()
 
 	self.btnTravel:SetText(onoff(settings.click_to_travel))
 	self.descTravel:SetString(settings.click_to_travel and strs.CLICK_TO_TRAVEL_DESC_ON or strs.CLICK_TO_TRAVEL_DESC_OFF)
+
+	self.descIndicatorArea:SetString(string.format(strs.INDICATOR_AREA_DESC,
+		DialogIndicatorArea.ShapeName(settings.indicator_shape or "rectangle"),
+		tostring(settings.indicator_area_size or 50)))
 
 	local mode = settings.map_icons or "all"
 	if mode == "visible" then

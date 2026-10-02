@@ -18,6 +18,7 @@ local DialogEdit = require "dialogedit"
 local DialogMp = require "dialogmp"
 local DialogKeybinds = require "dialogkeybinds"
 local DialogConfig = require "dialogconfig"
+local DialogIndicatorArea = require "dialogindicatorarea"
 
 -- OTHER
 local PersistentData = require "persistentdata"
@@ -719,6 +720,14 @@ end
 
 function MainWp:KillConfigDialog()
 	if self.dialogConfig then
+		-- Sub-dialogs opened from Configurations close with it
+		if self.dialogIndicatorArea ~= nil then
+			self:KillIndicatorAreaDialog()
+		end
+		if self.dialogKeybinds ~= nil then
+			self.dialogKeybinds:Kill()
+			self.dialogKeybinds = nil
+		end
 		self.dialogConfig:Kill()
 		self.dialogConfig = nil
 		-- Re-enable main UI when dialog closes
@@ -740,6 +749,56 @@ function MainWp:OpenKeybindDialog()
 		end)
 	else
 		print("[waypoint] already editing keybinds!")
+	end
+end
+
+function MainWp:OpenIndicatorAreaDialog()
+	if self.dialogIndicatorArea == nil then
+		self.dialogIndicatorArea = self:AddChild(DialogIndicatorArea(nil, nil, self.skin, self))
+		self.dialogIndicatorArea:SetCancelCallback(function()
+			self:KillIndicatorAreaDialog()
+		end)
+
+		-- Clear the view: hide everything in the waypoint window (list,
+		-- Configurations dialog, ...) except the indicator area panel.
+		self.hiddenForIndicatorPreview = {}
+		for child, _ in pairs(self.children) do
+			if child ~= self.dialogIndicatorArea and child.shown then
+				child:Hide()
+				table.insert(self.hiddenForIndicatorPreview, child)
+			end
+		end
+
+		-- Show indicators while previewing so you can watch them follow the area
+		self.indicatorsForcedForPreview = not self.markerMode
+		if self.indicatorsForcedForPreview then
+			self:ToggleMarkerMode()
+		end
+	end
+end
+
+function MainWp:KillIndicatorAreaDialog()
+	if self.dialogIndicatorArea ~= nil then
+		self.dialogIndicatorArea:Kill()
+		self.dialogIndicatorArea = nil
+	end
+	-- Bring the hidden windows back
+	if self.hiddenForIndicatorPreview ~= nil then
+		for _, child in ipairs(self.hiddenForIndicatorPreview) do
+			child:Show()
+		end
+		self.hiddenForIndicatorPreview = nil
+	end
+	-- Restore the indicator toggle if we switched it on for the preview
+	if self.indicatorsForcedForPreview then
+		self.indicatorsForcedForPreview = nil
+		if self.markerMode then
+			self:ToggleMarkerMode()
+		end
+	end
+	-- Refresh the Configurations dialog summary
+	if self.dialogConfig ~= nil and self.dialogConfig.RefreshValues then
+		self.dialogConfig:RefreshValues()
 	end
 end
 

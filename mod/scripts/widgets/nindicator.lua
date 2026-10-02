@@ -5,6 +5,7 @@ Custom indicator using DS's playerhub.lua + targetindicator.lua as reference
 ]]
 
 local NPanel = require "widgets/npanel"
+local IndicatorArea = require "indicatorarea"
 
 local Compatibility = require "util/compatibility"
 local ImageButton = Compatibility:ImageButton()
@@ -37,10 +38,7 @@ local LABEL_OFFSET = 60
 local LABEL_X_MULT = 1.5
 local LABEL_X_OFFSET_MIN = 40
 
-local TOP_EDGE_BUFFER = 60
-local BOTTOM_EDGE_BUFFER = 100
-local LEFT_EDGE_BUFFER = 20
-local RIGHT_EDGE_BUFFER = 20
+-- Screen-edge buffers now live in indicatorarea.lua
 
 local MIN_SCALE = .5
 local MIN_ALPHA = .1
@@ -154,6 +152,15 @@ function NIndicator:OnUpdate()
     end
 
     if self:IsVisible() then
+        -- Name label: always, or only while hovering (setting "indicator_names").
+        -- Hover-only applies to far-away indicators on the indicator area; when
+        -- you're close (aim == false, flag drawn over the waypoint) the name shows.
+        if IndicatorArea.namesOnHover and aim and not self.focus then
+            self.label:Hide()
+        else
+            self.label:Show()
+        end
+
         self.dist:SetString(math.floor(dist / TILE_SCALE) .. "m")
         if dist > MAX_DIST then
             dist = MAX_DIST
@@ -196,37 +203,6 @@ function NIndicator:GetIndicatorAlpha(dist)
     return alpha
 end
 
-local function GetXCoord(angle, width)
-    if angle >= 90 and angle <= 180 then -- left side
-        return 0
-    elseif angle <= 0 and angle >= -90 then -- right side
-        return width
-    else -- middle somewhere
-        if angle < 0 then
-            angle = -angle - 90
-        end
-        local pctX = 1 - (angle / 90)
-        return pctX * width
-    end
-end
-
-local function GetYCoord(angle, height)
-    if angle <= -90 and angle >= -180 then -- top side
-        return height
-    elseif angle >= 0 and angle <= 90 then -- bottom side
-        return 0
-    else -- middle somewhere
-        if angle < 0 then
-            angle = -angle
-        end
-        if angle > 90 then
-            angle = angle - 90
-        end
-        local pctY = (angle / 90)
-        return pctY * height
-    end
-end
-
 function NIndicator:UpdatePosition(targX, targZ, aim)
     if aim then
         local angleToTarget = self.owner:GetAngleToPoint(targX, 0, targZ)
@@ -250,20 +226,14 @@ function NIndicator:UpdatePosition(targX, targZ, aim)
 
         local screenWidth, screenHeight = TheSim:GetScreenSize()
 
-        local x = GetXCoord(indicatorAngle, screenWidth)
-        local y = GetYCoord(indicatorAngle, screenHeight)
-
-        if x <= LEFT_EDGE_BUFFER + (MARGIN_X * w * scale.x * SPREAD_FACTOR) then 
-            x = LEFT_EDGE_BUFFER + (MARGIN_X * w * scale.x * SPREAD_FACTOR)
-        elseif x >= screenWidth - RIGHT_EDGE_BUFFER - (MARGIN_X * w * scale.x * SPREAD_FACTOR) then
-            x = screenWidth - RIGHT_EDGE_BUFFER - (MARGIN_X * w * scale.x * SPREAD_FACTOR)
-        end
-
-        if y <= BOTTOM_EDGE_BUFFER + (MARGIN_Y * h * scale.y) then 
-            y = BOTTOM_EDGE_BUFFER + (MARGIN_Y * h * scale.y)
-        elseif y >= screenHeight - TOP_EDGE_BUFFER - (MARGIN_Y * h * scale.y) then
-            y = screenHeight - TOP_EDGE_BUFFER - (MARGIN_Y * h * scale.y)
-        end
+        -- Place the indicator where a ray from the centre, in the target's
+        -- on-screen direction, meets the configured shape (rectangle/oval/circle).
+        -- Same direction the arrow points in (see PositionArrow).
+        local a = (indicatorAngle + 45) * DEGREES
+        local dirX, dirY = math.cos(a), -math.sin(a)
+        local cx, cy, hx, hy = IndicatorArea:GetBox(screenWidth, screenHeight)
+        -- The flag's centre sits on the outline
+        local x, y = IndicatorArea:PointAt(dirX, dirY, cx, cy, hx, hy)
 
         self:SetPosition(x,y,0)
         self.x = x

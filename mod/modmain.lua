@@ -127,12 +127,22 @@ local WAYPOINT_SETTINGS = {
 	map_icons = "all",        -- "all" | "visible" (hide hidden waypoints) | "off"
 	show_coordinates = false,
 	click_to_travel = true,
+	indicator_shape = "rectangle", -- "rectangle" | "ellipse" | "circle"
+	indicator_names = "always",    -- "always" | "hover" (indicator name only while hovering)
+	indicator_area_size = 50,      -- percent, 30-100 in steps of 10 (renamed from indicator_size so earlier 100% saves reset to 50)
 }
 local MAP_ICON_MODES = { all = true, visible = true, off = true }
+local IndicatorArea = require "indicatorarea"
 
 local function SanitizeSetting(key, value)
 	if key == "map_icons" then
 		return MAP_ICON_MODES[value] and value or nil
+	elseif key == "indicator_shape" then
+		return IndicatorArea:IsValidShape(value) and value or nil
+	elseif key == "indicator_names" then
+		return (value == "always" or value == "hover") and value or nil
+	elseif key == "indicator_area_size" then
+		return IndicatorArea:ClampSize(value)
 	elseif WAYPOINT_SETTINGS[key] ~= nil and type(value) == "boolean" then
 		return value
 	end
@@ -184,6 +194,8 @@ if not settingsLoaded then
 	MigrateOldModinfoSettings()
 	SaveSettings()
 end
+IndicatorArea:Set(WAYPOINT_SETTINGS.indicator_shape, WAYPOINT_SETTINGS.indicator_area_size)
+IndicatorArea.namesOnHover = WAYPOINT_SETTINGS.indicator_names == "hover"
 
 -- Keybind persistence and API
 local keybindData = PersistentData("waypoint_keybinds")
@@ -334,7 +346,8 @@ local function CanProcessWaypointHotkey(waypoint)
 	if waypoint.dialogEdit ~= nil or
 		waypoint.dialogMp ~= nil or
 		waypoint.dialogKeybinds ~= nil or
-		waypoint.dialogConfig ~= nil then
+		waypoint.dialogConfig ~= nil or
+		waypoint.dialogIndicatorArea ~= nil then
 		return false
 	end
 
@@ -427,7 +440,8 @@ local function CanProcessControllerAction()
 	end
 	-- Don't act while one of our own dialogs is open
 	if waypoint.dialogEdit ~= nil or waypoint.dialogMp ~= nil or
-		waypoint.dialogKeybinds ~= nil or waypoint.dialogConfig ~= nil then
+		waypoint.dialogKeybinds ~= nil or waypoint.dialogConfig ~= nil or
+		waypoint.dialogIndicatorArea ~= nil then
 		return nil
 	end
 	return waypoint
@@ -542,6 +556,11 @@ local function ApplySetting(controls, key)
 		waypoint:SetShowCoordinates(WAYPOINT_SETTINGS.show_coordinates)
 	elseif key == "click_to_travel" then
 		waypoint:SetClickToTravel(WAYPOINT_SETTINGS.click_to_travel)
+	elseif key == "indicator_shape" or key == "indicator_area_size" then
+		-- Indicators read this every frame, so the change is immediate
+		IndicatorArea:Set(WAYPOINT_SETTINGS.indicator_shape, WAYPOINT_SETTINGS.indicator_area_size)
+	elseif key == "indicator_names" then
+		IndicatorArea.namesOnHover = WAYPOINT_SETTINGS.indicator_names == "hover"
 	end
 end
 
