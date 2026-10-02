@@ -7,7 +7,22 @@ WAYPOINT = {
 		},
 		CONTROLLER = {
 			TOGGLE_INDICATORS = "ウェイポイント表示",
-			ADD_REMOVE = "ウェイポイント追加/削除",
+			OPEN_WINDOW = "ウェイポイント",
+			SELECT = "選択",
+			BACK = "戻る",
+			CLOSE = "閉じる",
+			CHANGE = "変更",
+			PAGE = "ページ",
+			DONE = "完了",
+			SHOW = "表示",
+			HIDE = "非表示",
+			HIDDEN = "非表示",
+			RENAME = "名前を変更",
+			PICK_COLOUR = "色を選ぶ",
+			HUE_SHADE = "色相 / 彩度",
+			BRIGHTNESS = "明るさ",
+			RANDOM_NAME = "新しい名前",
+			MOVE_HERE = "現在地を使う",
 		},
 		MENU = {
 			TITLE = "- ウェイポイント -"

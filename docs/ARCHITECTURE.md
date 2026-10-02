@@ -54,6 +54,7 @@ Only `mod/` is copied to the game. `scripts/` inside it is added to the Lua sear
 | `dialogedit.lua` | Edit modal: name, X/Z, colour palette, randomise, move up/down, toggle visibility, delete. |
 | `dialogconfig.lua` | Configurations modal: keybinds + in-game settings (live), debug info popup. |
 | `dialogkeybinds.lua` + `screens/keybindscreen.lua` | Capture a key (A–Z) or Backspace to clear. |
+| `screens/waypointcontrollerscreen.lua` | Controller navigation of the window and its dialogs (cursor, highlight, help bar), see *Controller support*. |
 | `dialogmp.lua` | Warning shown when travel is attempted with movement prediction off. |
 | `styler.lua` + `util/nstyler.lua` | "CSS-like" skinning of `NPanel`s by class (`Frame`, `ListItem`, …); skin 0 = plain, 1 = DST-like. |
 | `prefabs/flagplacer.lua` | Invisible, non-persistent entity placed at a waypoint; targets for indicators and (fallback) minimap icon. |
@@ -90,22 +91,40 @@ Only `mod/` is copied to the game. `scripts/` inside it is added to the Lua sear
 
 ## Controller support
 
-Controller actions only work **while the scoreboard is held open** (DST: hold the player-status button, Back/View; single-player DS: on the pause screen):
+**How to open it (DST):** the controller's Back/View button opens the game's **social menu / command wheel** (`CONTROL_OPEN_COMMAND_WHEEL`). The mod adds two items to it:
 
-| Button | Action |
+| Wheel item | Action |
 |---|---|
-| LT (`CONTROL_OPEN_CRAFTING`) | Toggle waypoint indicators |
-| RT (`CONTROL_OPEN_INVENTORY`) | Add a waypoint at your position, or remove the one you're standing on (within 0.7 tiles) |
+| Waypoints (`images/icon.xml`) | Open the waypoint window for controller use (`MainWp:OpenWithController`); without a controller it just toggles the window |
+| Waypoint indicators (`nuiwp.xml` marker) | Toggle waypoint indicators |
 
-The scoreboard's help bar lists these (post-construct on `screens/playerstatusscreen`).
+Hooked with a post-construct on `widgets/controls`: `commandwheel.SetItems` is wrapped to append the items to the root dataset (`dataset_name == nil`), then `Controls:BuildCommandWheel()` is called once more (the constructor already built it). The HUD rebuilds the wheel later (mount/invite changes) through the same `SetItems`, so the items stay. The wheel runs `execute` and then closes itself (`OnExecute` → `PlayerHud:CloseCommandWheel`).
 
-Why this doesn't conflict with game controls:
-- `TheInput` control handlers only receive controls the active screen did **not** consume (`Input:OnControl` checks `TheFrontEnd:OnControl` first). Anything the scoreboard uses (B, X, Y, LB/RB list paging, d-pad, A) never reaches the mod.
-- While the scoreboard is open the HUD isn't the active screen, so LT/RT don't open crafting/inventory and the player controller is disabled.
-- During normal play the HUD consumes LT/RT, so the mod's handler doesn't fire, and it also checks the active screen is the scoreboard.
-- Ignored when no controller is attached (keyboard users use keybinds) or a waypoint dialog is open.
+> Gotcha (why the first version "did nothing"): DST no longer has a hold-to-show scoreboard on controllers. `CONTROL_SHOW_PLAYER_STATUS` has no controller binding (`screens/redux/optionsscreen.lua`), and Back/View opens the command wheel, which is a HUD widget, so the HUD stays the active screen and consumes LT/RT (crafting / inventory). Check the game's `scripts.zip` before relying on a controller button.
 
-Not covered yet: navigating the waypoint window or travelling to a waypoint with a controller.
+**Fallback, the scoreboard** (DST: *Player List* in the command wheel; single-player DS: the pause screen): RT opens the window, LT toggles indicators. `TheInput` control handlers only receive controls the active screen did **not** consume, and the scoreboard doesn't use LT/RT; the help bar lists them (post-construct on `screens/playerstatusscreen`). Ignored when no controller is attached or a waypoint dialog is open.
+
+### Navigating the window (`screens/waypointcontrollerscreen.lua`)
+
+The window is a HUD widget, not a Screen, so the game's focus system can't reach it. `OpenWithController` pushes an invisible `WaypointControllerScreen` on top of the HUD. It consumes every control (the player can't move, LT/RT don't open crafting) and keeps its own cursor on the **topmost waypoint panel** (`MainWp:GetControllerPanel`: indicator area > keybinds > configurations > MP warning > edit dialog > window):
+
+- **Highlight:** a gold outline + translucent fill around the selected item and a tooltip above it (the node's `hint`, else the widget's tooltip). The selected widget also gets `OnGainFocus`/`OnLoseFocus`, so buttons grow and play the hover sound like on mouse-over.
+- **Help bar:** `GetHelpText` lists the actions of the selected item.
+- Panels describe their items with `GetControllerRows(screen)` (rows of nodes: `widget`, `onaccept` (default: the button's `onclick`), `onleft`/`onright`, `onx`/`ony`, labels, `hint`). Hidden widgets are skipped. Optional `OnControllerCancel`, `OnControllerPage`, `GetControllerDefaultFocus`. The cursor stays on the same item by `id` across refreshes (the layout is rebuilt every frame).
+- Directions: in DST the front end turns the d-pad / left stick into `OnFocusMove(MOVE_*)` calls, repeating while held (`FrontEnd:Update`), so `CONTROL_FOCUS_*` controls are only used as a fallback in DS. LB/RB are `CONTROL_SCROLLBACK/FWD` (also repeated by the front end). Buttons act on **release** and only if the press was seen (so the RT release that opened the screen, or a popup's last press, does nothing).
+- `onaccept` may return a **capture** (`ondir`, `onshoulder`, `help`): the d-pad then goes to it until A/B. Used by the colour palette (`NColourPalette:StepHSV`).
+- The screen closes itself if the window is hidden some other way or the HUD is rebuilt; closing also closes any waypoint dialogs and hides the window (`MainWp:OnControllerScreenClosed`).
+
+| Panel | Items |
+|---|---|
+| Window | Configurations · Indicators · Add (cursor jumps to the new waypoint) / each waypoint: name (A edit, X show/hide, Y delete) and flag (A travel; closes the window first so the player controller is active again) / MP toggle · Prev · Next / Close. LB/RB change page, B closes. |
+| Edit | Up · Down · Visibility · Delete / Name / X · Z / Random colour · Palette (A: d-pad = hue/shade, LB/RB = brightness) / Save · Cancel. B cancels. |
+| Configurations, Keybinds, MP warning | Each button in order; B closes. Keybind capture still needs a keyboard (B cancels it). |
+| Indicator area | Shape, Size, Names (left/right change the value) / Close. |
+
+Text fields (name, X/Z) open the usual `NInputScreen`, which needs a keyboard (DST only opens a virtual keyboard on Steam Deck; Steam's overlay keyboard works); B cancels it. Controller-only shortcuts: X on the name = new random name (`MainWp:GenerateName`), Y on X/Z = use my position.
+
+Highlight sizes use each widget's **own** scale (`inst.UITransform:GetScale()`); `Widget:GetScale()` in DST multiplies in every parent, including the HUD scale.
 
 ## Config options (`modinfo.lua`)
 
@@ -119,7 +138,7 @@ Only things that need a restart or are rarely changed stay here:
 | `SHOW_WAYPOINT_INDICATORS` | `true` | indicators on when joining a world |
 | `COLOUR_PALETTE_VARIETY` | 8 | palette step (lower = more colours) |
 | `ALWAYS_SHOW_MP_WAYPOINT` | false | "Movement prediction button": When needed / Always |
-| `ENABLE_CONTROLLER_SUPPORT` | `true` | controller actions on the scoreboard (see above) |
+| `ENABLE_CONTROLLER_SUPPORT` | `true` | controller: social-menu items (and scoreboard LT/RT) to open the window / toggle indicators, and window navigation (see above) |
 
 ## In-game settings (Configurations dialog)
 

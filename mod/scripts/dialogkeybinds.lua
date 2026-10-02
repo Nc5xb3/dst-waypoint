@@ -256,6 +256,23 @@ function DialogKeybinds:StartCapture(which)
 	TheFrontEnd:PushScreen(KeybindScreen(oncaptured, oncancel, self.skin))
 end
 
+-- Controller navigation (screens/waypointcontrollerscreen.lua). Keybinds are
+-- keyboard keys, but the dialog can still be browsed and closed with a controller.
+function DialogKeybinds:GetControllerRows(screen)
+	return {
+		{ { id = "ui", widget = self.btnToggleUi, hint = STRINGS.WAYPOINT.UI.DIALOG.KEYBINDS.ACTION_TOGGLE_UI } },
+		{ { id = "indicators", widget = self.btnToggleIndicators, hint = STRINGS.WAYPOINT.UI.DIALOG.KEYBINDS.ACTION_TOGGLE_INDICATORS } },
+		{
+			{ id = "save", widget = self.btnSave },
+			{ id = "cancel", widget = self.btnCancel },
+		},
+	}
+end
+
+function DialogKeybinds:OnControllerCancel()
+	if self.cancel_callback ~= nil then
+		self.cancel_callback()
+	end
+end
+
 return DialogKeybinds
-
-

@@ -100,6 +100,19 @@ function KeybindScreen:OnRawKey(key, down)
 	return true
 end
 
+-- Controller: B cancels (keys can only be captured from a keyboard)
+function KeybindScreen:OnControl(control, down)
+	if KeybindScreen._base.OnControl(self, control, down) then
+		return true
+	end
+	if not down and control == CONTROL_CANCEL then
+		if self.oncancel ~= nil then
+			self.oncancel()
+		end
+		TheFrontEnd:PopScreen(self)
+		return true
+	end
+	return false
+end
+
 return KeybindScreen
-
-

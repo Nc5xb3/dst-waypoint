@@ -400,16 +400,21 @@ local function RegisterHotkeys()
 end
 
 -----v CONTROLLER v-----
--- Controller actions only work while the scoreboard is held open
--- (DST: hold the player-status button, Back/View; DS: on the pause screen).
--- Why this avoids conflicts:
+-- With a controller, the waypoint window is opened from:
+--  * DST: the social menu / command wheel (Back/View) - "Waypoints" and
+--    "Waypoint indicators" items, see the command wheel section below.
+--  * The scoreboard (DST: Player List in the command wheel; DS: the pause screen):
+--      RT  open the waypoint window
+--      LT  toggle waypoint indicators
+-- The window is then fully navigable, see screens/waypointcontrollerscreen.lua.
+-- Why not a plain button: during play every controller button already does
+-- something. For the scoreboard:
 --  * TheInput control handlers only receive controls the active screen did NOT
 --    consume (Input:OnControl checks TheFrontEnd:OnControl first), so anything the
 --    scoreboard uses (B, X, Y, LB/RB list paging, d-pad, A) never reaches us.
 --  * While the scoreboard is open the HUD is not the active screen, so LT/RT don't
 --    open crafting/inventory and the player controller is disabled.
 --  * During normal play LT/RT are consumed by the HUD and our handler is skipped.
-local CONTROLLER_REMOVE_RADIUS = .7 -- tiles; standing this close to a waypoint removes it
 local controllerRegistered = false
 
 local function IsControllerContextScreen()
@@ -459,20 +464,30 @@ local function OnControllerToggleIndicators(down)
 	PlayControllerFeedback()
 end
 
-local function OnControllerAddOrRemove(down)
+-- Close the scoreboard / pause screen we were opened from
+local function CloseContextScreen()
+	local screen = GLOBAL.TheFrontEnd:GetActiveScreen()
+	if screen == nil or not IsControllerContextScreen() then
+		return
+	end
+	if DST and screen.Close ~= nil then
+		screen:Close()
+	elseif not DST and screen.unpause ~= nil then
+		screen:unpause()
+	else
+		GLOBAL.TheFrontEnd:PopScreen(screen)
+		if not DST then
+			GLOBAL.SetPause(false)
+		end
+	end
+end
+
+local function OnControllerOpenWindow(down)
 	if not down then return end
 	local waypoint = CanProcessControllerAction()
 	if waypoint == nil then return end
-	local player = ThePlayer()
-	if player == nil or player.Transform == nil then return end
-	local point = GLOBAL.Point(player.Transform:GetWorldPosition())
-	local wid = waypoint:ClosestWaypointAt(point, CONTROLLER_REMOVE_RADIUS)
-	if wid ~= nil then
-		waypoint:Remove(wid)
-	else
-		waypoint:Add()
-	end
-	PlayControllerFeedback()
+	CloseContextScreen()
+	waypoint:OpenWithController()
 end
 
 local function RegisterControllerControls()
@@ -481,7 +496,7 @@ local function RegisterControllerControls()
 	end
 	controllerRegistered = true
 	GLOBAL.TheInput:AddControlHandler(GLOBAL.CONTROL_OPEN_CRAFTING, OnControllerToggleIndicators) -- left trigger
-	GLOBAL.TheInput:AddControlHandler(GLOBAL.CONTROL_OPEN_INVENTORY, OnControllerAddOrRemove)    -- right trigger
+	GLOBAL.TheInput:AddControlHandler(GLOBAL.CONTROL_OPEN_INVENTORY, OnControllerOpenWindow)      -- right trigger
 end
 
 -- Show the waypoint controls in the scoreboard's controller help bar
@@ -497,12 +512,86 @@ if DST and ENABLE_CONTROLLER_SUPPORT then
 			local controller_id = input:GetControllerID()
 			local strs = STRINGS.WAYPOINT.UI.CONTROLLER
 			local extra =
-				input:GetLocalizedControl(controller_id, GLOBAL.CONTROL_OPEN_CRAFTING) .. " " .. strs.TOGGLE_INDICATORS .. "  " ..
-				input:GetLocalizedControl(controller_id, GLOBAL.CONTROL_OPEN_INVENTORY) .. " " .. strs.ADD_REMOVE
+				input:GetLocalizedControl(controller_id, GLOBAL.CONTROL_OPEN_INVENTORY) .. " " .. strs.OPEN_WINDOW .. "  " ..
+				input:GetLocalizedControl(controller_id, GLOBAL.CONTROL_OPEN_CRAFTING) .. " " .. strs.TOGGLE_INDICATORS
 			if text ~= "" then
 				return text .. "  " .. extra
 			end
 			return extra
+		end
+	end)
+end
+
+-- Social menu / command wheel (DST controller: the Back/View button).
+-- Since the command wheel replaced the hold-to-show scoreboard on controllers,
+-- this is the main way in: two extra wheel items open the waypoint window and
+-- toggle the indicators. The wheel calls `execute`, then closes itself.
+local function HasOpenWaypointDialog(waypoint)
+	return waypoint.dialogEdit ~= nil or waypoint.dialogMp ~= nil or
+		waypoint.dialogKeybinds ~= nil or waypoint.dialogConfig ~= nil or
+		waypoint.dialogIndicatorArea ~= nil
+end
+
+local function OnWheelOpenWindow()
+	local waypoint = GetActiveWaypoint()
+	if waypoint == nil or HasOpenWaypointDialog(waypoint) then
+		return
+	end
+	if GLOBAL.TheInput:ControllerAttached() then
+		waypoint:OpenWithController()
+	else
+		ToggleWaypointUI(waypoint)
+	end
+end
+
+local function OnWheelToggleIndicators()
+	local waypoint = GetActiveWaypoint()
+	if waypoint == nil then
+		return
+	end
+	waypoint:ToggleMarkerMode()
+	PlayControllerFeedback()
+end
+
+local function AddWaypointWheelItems(dataset)
+	local strs = STRINGS.WAYPOINT.UI.CONTROLLER
+	local items = {}
+	for i, v in ipairs(dataset) do
+		items[i] = v
+	end
+	table.insert(items, {
+		label = strs.OPEN_WINDOW,
+		execute = OnWheelOpenWindow,
+		atlas = "images/icon.xml", normal = "icon.tex",
+		widget_scale = .8,
+	})
+	table.insert(items, {
+		label = strs.TOGGLE_INDICATORS,
+		execute = OnWheelToggleIndicators,
+		atlas = "images/nuiwp.xml", normal = "marker.tex",
+		widget_scale = 1.4,
+	})
+	return items
+end
+
+if DST and ENABLE_CONTROLLER_SUPPORT then
+	AddClassPostConstruct("widgets/controls", function(self)
+		local wheel = self.commandwheel
+		if wheel == nil or wheel.SetItems == nil or self.BuildCommandWheel == nil then
+			print("[waypoint] command wheel not found, social menu items not added")
+			return
+		end
+		local OldSetItems = wheel.SetItems
+		wheel.SetItems = function(w, dataset, radius, focus_radius, dataset_name, ...)
+			if (dataset_name == nil or dataset_name == "root") and type(dataset) == "table" then
+				dataset = AddWaypointWheelItems(dataset)
+			end
+			return OldSetItems(w, dataset, radius, focus_radius, dataset_name, ...)
+		end
+		-- The constructor already built the wheel; build it again with our items
+		local ok, err = GLOBAL.pcall(self.BuildCommandWheel, self)
+		if not ok then
+			print("[waypoint] failed to rebuild command wheel: " .. tostring(err))
 		end
 	end)
 end

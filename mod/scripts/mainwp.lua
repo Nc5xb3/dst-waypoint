@@ -400,6 +400,26 @@ end
 
 function MainWp:Add()
 	local x,y,z = Compatibility:ThePlayer().Transform:GetWorldPosition()
+	local waypoint = Waypoint(
+		self:GenerateName(x,y,z),
+		{["x"]=x,["y"]=y,["z"]=z},
+		{
+			r=math.random()*.7+.3,
+			g=math.random()*.7+.3,
+			b=math.random()*.7+.3
+		}
+	)
+	table.insert(self.waypoints, waypoint)
+	self:AddMapIcon(waypoint)
+	if self.markerMode then
+		self:AddMarker(waypoint)
+	end
+	
+	self:LastPage()
+end
+
+-- "<Random adjective> <Ground type>" for a position
+function MainWp:GenerateName(x,y,z)
 	local gid = Compatibility:TheWorld().Map:GetTileAtPoint(x,y,z)
 
 	-- GROUND from constants which is accessible
@@ -418,22 +438,7 @@ function MainWp:Add()
 		groundName = 'Ground'
 	end
 
-	local waypoint = Waypoint(
-		uniqueName .. ' ' .. groundName,
-		{["x"]=x,["y"]=y,["z"]=z},
-		{
-			r=math.random()*.7+.3,
-			g=math.random()*.7+.3,
-			b=math.random()*.7+.3
-		}
-	)
-	table.insert(self.waypoints, waypoint)
-	self:AddMapIcon(waypoint)
-	if self.markerMode then
-		self:AddMarker(waypoint)
-	end
-	
-	self:LastPage()
+	return uniqueName .. ' ' .. groundName
 end
 
 function MainWp:ClosestWaypointAt(point, maxDist)
@@ -1266,6 +1271,173 @@ function MainWp:ShowMpWarning()
 		end)
 	else
 		print("[waypoint] already editing!")
+	end
+end
+
+-------------------------------------------------------------------------------
+-- Controller support (see screens/waypointcontrollerscreen.lua)
+
+-- Opens the window for controller use: shows it and pushes the navigation screen
+function MainWp:OpenWithController()
+	if self.controllerScreen ~= nil then
+		return
+	end
+	if not self.shown then
+		self:Show()
+	end
+	local WaypointControllerScreen = require "screens/waypointcontrollerscreen"
+	self.controllerScreen = WaypointControllerScreen(self)
+	TheFrontEnd:PushScreen(self.controllerScreen)
+end
+
+function MainWp:CloseControllerScreen()
+	if self.controllerScreen ~= nil then
+		self.controllerScreen:Close()
+	end
+end
+
+-- Called by the navigation screen when it closes: close our dialogs and the window
+function MainWp:OnControllerScreenClosed()
+	self.controllerScreen = nil
+	if self.dialogIndicatorArea ~= nil then
+		self:KillIndicatorAreaDialog()
+	end
+	if self.dialogKeybinds ~= nil then
+		self:KillKeybindDialog()
+	end
+	if self.dialogConfig ~= nil then
+		self:KillConfigDialog()
+	end
+	if self.dialogEdit ~= nil then
+		self:KillEditDialog()
+	end
+	if self.dialogMp ~= nil then
+		self:KillMpDialog()
+	end
+	if self.shown then
+		self:Hide()
+	end
+end
+
+-- The panel the controller cursor works in: the topmost open dialog, or the window
+function MainWp:GetControllerPanel()
+	return self.dialogIndicatorArea
+		or self.dialogKeybinds
+		or self.dialogConfig
+		or self.dialogMp
+		or self.dialogEdit
+		or self
+end
+
+local function WaypointNodeId(waypoint, part)
+	return "wp" .. tostring(waypoint) .. ":" .. part
+end
+
+function MainWp:GetControllerDefaultFocus()
+	local li = self.listWaypoint[1]
+	if li ~= nil and li.currentWaypoint ~= nil then
+		return WaypointNodeId(li.currentWaypoint, "name")
+	end
+	return "add"
+end
+
+function MainWp:GetControllerRows(screen)
+	local strs = STRINGS.WAYPOINT.UI
+	local cstrs = strs.CONTROLLER
+	local rows = {}
+
+	table.insert(rows, {
+		{ id = "config", widget = self.btnConfig },
+		{ id = "indicators", widget = self.btnIndicators },
+		{ id = "add", widget = self.btnAdd, onaccept = function()
+			if self.dialogEdit == nil and self.dialogConfig == nil then
+				self:Add()
+				local newest = self.waypoints[#self.waypoints]
+				if newest ~= nil then
+					screen:FocusId(WaypointNodeId(newest, "name"), self)
+				end
+			end
+		end },
+	})
+
+	local pageSize = #self.listWaypoint
+	for i, li in ipairs(self.listWaypoint) do
+		local waypoint = li.currentWaypoint
+		if waypoint ~= nil then
+			local wid = (self.pageIndex - 1) * pageSize + i
+			local function toggleHidden()
+				if self.waypoints[wid] == waypoint then
+					self:ToggleHidden(wid)
+				end
+			end
+			local function delete()
+				self:ConfirmDelete(waypoint, function()
+					for j, w in ipairs(self.waypoints) do
+						if w == waypoint then
+							self:Remove(j)
+							break
+						end
+					end
+				end)
+			end
+			local row = {
+				{
+					id = WaypointNodeId(waypoint, "name"),
+					widget = li.lblName,
+					box = li,
+					focuswidget = li.lblName.input,
+					hint = waypoint.hidden and (waypoint.name .. " (" .. cstrs.HIDDEN .. ")") or "",
+					acceptLabel = strs.BUTTON.EDIT,
+					onaccept = function()
+						if self.dialogEdit == nil and self.dialogConfig == nil then
+							self:Edit(wid)
+						end
+					end,
+					onx = toggleHidden, xLabel = waypoint.hidden and cstrs.SHOW or cstrs.HIDE,
+					ony = delete, yLabel = strs.DIALOG.OPTION.DELETE,
+				},
+			}
+			if not self.disableAutoTravel then
+				table.insert(row, {
+					id = WaypointNodeId(waypoint, "flag"),
+					widget = li.btnNavigate,
+					hint = strs.INDICATOR.BUTTON.PREFIX_TRAVELTO .. waypoint.name .. strs.INDICATOR.BUTTON.SUFFIX_TRAVELTO,
+					acceptLabel = strs.BUTTON.TRAVEL,
+					onaccept = function()
+						local player = Compatibility:ThePlayer()
+						if player ~= nil and player.components.locomotor ~= nil then
+							-- Close first so the HUD (and player controller) is active again
+							screen:Close()
+						end
+						self:MovePlayerTo(waypoint)
+					end,
+					onx = toggleHidden, xLabel = waypoint.hidden and cstrs.SHOW or cstrs.HIDE,
+					ony = delete, yLabel = strs.DIALOG.OPTION.DELETE,
+				})
+			end
+			table.insert(rows, row)
+		end
+	end
+
+	table.insert(rows, {
+		{ id = "mp", widget = self.btnMpToggle },
+		{ id = "prev", widget = self.btnPrev },
+		{ id = "next", widget = self.btnNext },
+	})
+	table.insert(rows, {
+		{ id = "close", widget = self.btnClose, onaccept = function() screen:Close() end },
+	})
+	return rows
+end
+
+function MainWp:OnControllerPage(dir)
+	if self.dialogEdit ~= nil or self.dialogConfig ~= nil then
+		return
+	end
+	if dir < 0 then
+		self:PrevPage()
+	else
+		self:NextPage()
 	end
 end
 

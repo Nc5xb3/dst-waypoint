@@ -272,4 +272,90 @@ function DialogEdit:SetToggleVisibilityCallback(callback)
 	self.toggle_visibility_callback = callback
 end
 
+-- Controller navigation (screens/waypointcontrollerscreen.lua)
+function DialogEdit:GetControllerDefaultFocus()
+	return "name"
+end
+
+function DialogEdit:GetControllerRows(screen)
+	local cstrs = STRINGS.WAYPOINT.UI.CONTROLLER
+	local palette = self.palette
+	return {
+		{
+			{ id = "up", widget = self.btnUp },
+			{ id = "down", widget = self.btnDown },
+			{ id = "visibility", widget = self.btnToggleVisibility },
+			{ id = "delete", widget = self.btnDelete },
+		},
+		-- Text fields need a keyboard (or Steam's on-screen keyboard), so each
+		-- also has a controller-only shortcut
+		{ {
+			id = "name", widget = self.inputName, focuswidget = self.inputName.input,
+			hint = cstrs.RENAME, acceptLabel = cstrs.RENAME,
+			onx = function() self:RandomiseName() end, xLabel = cstrs.RANDOM_NAME,
+		} },
+		{
+			{
+				id = "x", widget = self.inputX, focuswidget = self.inputX.input, hint = "X",
+				ony = function() self:SetCoordinatesToPlayer() end, yLabel = cstrs.MOVE_HERE,
+			},
+			{
+				id = "z", widget = self.inputZ, focuswidget = self.inputZ.input, hint = "Z",
+				ony = function() self:SetCoordinatesToPlayer() end, yLabel = cstrs.MOVE_HERE,
+			},
+		},
+		{
+			{ id = "random", widget = self.imgFlag },
+			{
+				id = "palette", widget = palette, hint = cstrs.PICK_COLOUR, acceptLabel = cstrs.PICK_COLOUR,
+				onaccept = function()
+					return {
+						hint = cstrs.PICK_COLOUR,
+						ondir = function(dx, dy) palette:StepHSV(dx, dy, 0) end,
+						onshoulder = function(d) palette:StepHSV(0, 0, d) end,
+						help = {
+							{ "CONTROL_FOCUS_RIGHT", cstrs.HUE_SHADE },
+							{ "CONTROL_SCROLLFWD", cstrs.BRIGHTNESS },
+						},
+					}
+				end,
+			},
+		},
+		{
+			{ id = "save", widget = self.btnSave },
+			{ id = "cancel", widget = self.btnCancel },
+		},
+	}
+end
+
+-- New "<Adjective> <Ground>" name for the coordinates in the dialog
+function DialogEdit:RandomiseName()
+	local x = tonumber(self.inputX.input:GetText())
+	local z = tonumber(self.inputZ.input:GetText())
+	if self.mainwp == nil or x == nil or z == nil then
+		return
+	end
+	local ok, name = pcall(self.mainwp.GenerateName, self.mainwp, x, 0, z)
+	if ok and name ~= nil then
+		self.inputName.input:SetText(name)
+	end
+end
+
+-- Put the player's current position into X/Z (saved with Save)
+function DialogEdit:SetCoordinatesToPlayer()
+	local player = Compatibility:ThePlayer()
+	if player == nil or player.Transform == nil then
+		return
+	end
+	local x, y, z = player.Transform:GetWorldPosition()
+	self.inputX.input:SetText(tonumber(string.format("%.3f", x)))
+	self.inputZ.input:SetText(tonumber(string.format("%.3f", z)))
+end
+
+function DialogEdit:OnControllerCancel()
+	if self.cancel_callback ~= nil then
+		self.cancel_callback()
+	end
+end
+
 return DialogEdit

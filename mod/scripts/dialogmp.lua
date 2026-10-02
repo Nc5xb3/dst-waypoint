@@ -78,4 +78,15 @@ function DialogMp:SetOkayCallback(callback)
 	self.okay_callback = callback
 end
 
+-- Controller navigation (screens/waypointcontrollerscreen.lua)
+function DialogMp:GetControllerRows(screen)
+	return { { { id = "okay", widget = self.btnOkay } } }
+end
+
+function DialogMp:OnControllerCancel()
+	if self.okay_callback ~= nil then
+		self.okay_callback()
+	end
+end
+
 return DialogMp

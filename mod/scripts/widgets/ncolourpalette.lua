@@ -222,4 +222,38 @@ function NColourPalette:HSVtoRGB(h,s,v)
 	end
 end
 
+-- Step through the palette's own grid (controller): dh = hue columns (wraps),
+-- ds = saturation rows (up = more colourful), dv = brightness rows (up = brighter)
+function NColourPalette:StepHSV(dh, ds, dv)
+	local numCol = self.paletteHS and #self.paletteHS or 0
+	local numRow = (numCol > 0 and #self.paletteHS[1]) or 0
+	local numV = self.paletteV and #self.paletteV or 0
+	if numCol < 2 or numRow < 2 or numV < 2 then
+		return
+	end
+	local function round(x) return math.floor(x + .5) end
+
+	if dh ~= 0 then
+		local col = round(self.h / 359 * (numCol - 1)) + dh
+		col = col % numCol
+		self.h = 359 * col / (numCol - 1)
+	end
+	if ds ~= 0 then
+		local row = round((1 - self.s) * (numRow - 1)) - ds
+		row = math.max(0, math.min(numRow - 1, row))
+		self.s = 1 - row / (numRow - 1)
+	end
+	if dv ~= 0 then
+		local row = round((1 - self.v) * (numV - 1)) - dv
+		row = math.max(0, math.min(numV - 1, row))
+		self.v = 1 - row / (numV - 1)
+		self:UpdatePalette()
+	else
+		self:UpdateMarkers()
+	end
+	if self.click_callback ~= nil then
+		self.click_callback()
+	end
+end
+
 return NColourPalette

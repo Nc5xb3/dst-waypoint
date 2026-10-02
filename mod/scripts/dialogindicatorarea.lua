@@ -278,4 +278,40 @@ function DialogIndicatorArea:Kill()
 	NPanel.Kill(self)
 end
 
+-- Controller navigation (screens/waypointcontrollerscreen.lua):
+-- each setting is one item, left/right changes it
+local VALUE_BOX_W, VALUE_BOX_H = 150, 30
+
+function DialogIndicatorArea:GetControllerRows(screen)
+	return {
+		{ {
+			id = "shape", widget = self.lblShapeValue, w = VALUE_BOX_W, h = VALUE_BOX_H,
+			hint = Strings().SHAPE,
+			onleft = function() self:CycleShape(-1) end,
+			onright = function() self:CycleShape(1) end,
+			onaccept = function() self:CycleShape(1) end,
+		} },
+		{ {
+			id = "size", widget = self.lblSizeValue, w = VALUE_BOX_W, h = VALUE_BOX_H,
+			hint = Strings().SIZE,
+			onleft = function() self:ChangeSize(-IndicatorArea.SIZE_STEP) end,
+			onright = function() self:ChangeSize(IndicatorArea.SIZE_STEP) end,
+		} },
+		{ {
+			id = "names", widget = self.lblNamesValue, w = VALUE_BOX_W, h = VALUE_BOX_H,
+			hint = Strings().NAMES,
+			onleft = function() self:ToggleNames() end,
+			onright = function() self:ToggleNames() end,
+			onaccept = function() self:ToggleNames() end,
+		} },
+		{ { id = "close", widget = self.btnClose } },
+	}
+end
+
+function DialogIndicatorArea:OnControllerCancel()
+	if self.cancel_callback ~= nil then
+		self.cancel_callback()
+	end
+end
+
 return DialogIndicatorArea

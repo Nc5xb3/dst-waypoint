@@ -268,4 +268,24 @@ function DialogConfig:Kill()
 	NPanel.Kill(self)
 end
 
+-- Controller navigation (screens/waypointcontrollerscreen.lua)
+function DialogConfig:GetControllerRows(screen)
+	return {
+		{ { id = "keybinds", widget = self.btnKeybinds } },
+		{ { id = "hud", widget = self.btnHudButton } },
+		{ { id = "map", widget = self.btnMapIcons } },
+		{ { id = "coords", widget = self.btnCoordinates } },
+		{ { id = "travel", widget = self.btnTravel } },
+		{ { id = "area", widget = self.btnIndicatorArea } },
+		{ { id = "debug", widget = self.btnDebug } },
+		{ { id = "close", widget = self.btnClose } },
+	}
+end
+
+function DialogConfig:OnControllerCancel()
+	if self.cancel_callback ~= nil then
+		self.cancel_callback()
+	end
+end
+
 return DialogConfig

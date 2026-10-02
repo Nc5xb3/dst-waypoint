@@ -7,7 +7,22 @@ WAYPOINT = {
 		},
 		CONTROLLER = {
 			TOGGLE_INDICATORS = "Индикаторы",
-			ADD_REMOVE = "Добавить/удалить координаты",
+			OPEN_WINDOW = "Метки",
+			SELECT = "Выбрать",
+			BACK = "Назад",
+			CLOSE = "Закрыть",
+			CHANGE = "Изменить",
+			PAGE = "Страница",
+			DONE = "Готово",
+			SHOW = "Показать",
+			HIDE = "Скрыть",
+			HIDDEN = "скрыта",
+			RENAME = "Переименовать",
+			PICK_COLOUR = "Выбрать цвет",
+			HUE_SHADE = "Оттенок / насыщенность",
+			BRIGHTNESS = "Яркость",
+			RANDOM_NAME = "Новое имя",
+			MOVE_HERE = "Моя позиция",
 		},
 		MENU = {
 			TITLE = "- Координаты -"

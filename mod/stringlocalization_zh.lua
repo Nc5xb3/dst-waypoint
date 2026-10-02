@@ -7,7 +7,22 @@ WAYPOINT = {
 		},
 		CONTROLLER = {
 			TOGGLE_INDICATORS = "路标指示器",
-			ADD_REMOVE = "添加/删除路标",
+			OPEN_WINDOW = "路标",
+			SELECT = "选择",
+			BACK = "返回",
+			CLOSE = "关闭",
+			CHANGE = "更改",
+			PAGE = "翻页",
+			DONE = "完成",
+			SHOW = "显示",
+			HIDE = "隐藏",
+			HIDDEN = "已隐藏",
+			RENAME = "重命名",
+			PICK_COLOUR = "选择颜色",
+			HUE_SHADE = "色相 / 饱和度",
+			BRIGHTNESS = "亮度",
+			RANDOM_NAME = "新名称",
+			MOVE_HERE = "使用我的位置",
 		},
 		MENU = {
 			TITLE = "- 路标 -"

@@ -7,7 +7,22 @@ WAYPOINT = {
 		},
 		CONTROLLER = {
 			TOGGLE_INDICATORS = "웨이포인트 표시기",
-			ADD_REMOVE = "웨이포인트 추가/삭제",
+			OPEN_WINDOW = "웨이포인트",
+			SELECT = "선택",
+			BACK = "뒤로",
+			CLOSE = "닫기",
+			CHANGE = "변경",
+			PAGE = "페이지",
+			DONE = "완료",
+			SHOW = "표시",
+			HIDE = "숨기기",
+			HIDDEN = "숨김",
+			RENAME = "이름 변경",
+			PICK_COLOUR = "색상 선택",
+			HUE_SHADE = "색조 / 채도",
+			BRIGHTNESS = "밝기",
+			RANDOM_NAME = "새 이름",
+			MOVE_HERE = "내 위치 사용",
 		},
 		MENU = {
 			TITLE = "- 웨이포인트 -"

@@ -118,7 +118,7 @@ configuration_options =
     {
         name = "ENABLE_CONTROLLER_SUPPORT",
         label = "Controller support",
-        hover = "Hold the scoreboard button (Back/View): LT toggles indicators, RT adds a waypoint (or removes the one you stand on)",
+        hover = "Social menu (Back/View): Waypoints opens the window (d-pad/stick to move, A select, B back), Waypoint indicators toggles them",
         options = {
             {description = "Off", data = false},
             {description = "On", data = true}

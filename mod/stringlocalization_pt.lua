@@ -7,7 +7,22 @@ WAYPOINT = {
 		},
 		CONTROLLER = {
 			TOGGLE_INDICATORS = "Indicadores de waypoint",
-			ADD_REMOVE = "Adicionar/remover waypoint",
+			OPEN_WINDOW = "Waypoints",
+			SELECT = "Selecionar",
+			BACK = "Voltar",
+			CLOSE = "Fechar",
+			CHANGE = "Alterar",
+			PAGE = "Página",
+			DONE = "Pronto",
+			SHOW = "Mostrar",
+			HIDE = "Ocultar",
+			HIDDEN = "oculto",
+			RENAME = "Renomear",
+			PICK_COLOUR = "Escolher cor",
+			HUE_SHADE = "Matiz / tom",
+			BRIGHTNESS = "Brilho",
+			RANDOM_NAME = "Novo nome",
+			MOVE_HERE = "Usar minha posição",
 		},
 		MENU = {
 			TITLE = "- Waypoint -"
