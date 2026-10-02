@@ -1,6 +1,8 @@
 --[[
 DialogConfig
-Configuration dialog with keybinds and debug information
+In-game settings: keybinds, HUD button, map icons, coordinates, click-to-travel.
+Settings apply immediately and are saved per client (see modmain WAYPOINT_SETTINGS).
+Debug information is behind a small "Debug info" button.
 ]]
 
 local NPanel = require "widgets/npanel"
@@ -12,6 +14,12 @@ local Compatibility = require "util/compatibility"
 local ImageButton = Compatibility:ImageButton()
 local Text = Compatibility:Text()
 
+local LABEL_FONT_SIZE = 24
+local DESC_FONT_SIZE = 17
+local DESC_COLOUR = {.85, .8, .65, 1} -- muted gold, reads as secondary text
+local BUTTON_SCALE = .55
+local MAP_ICON_MODES = { "all", "visible", "off" }
+
 local DialogConfig = Class(NPanel, function(self, w, h, skin, mainwp)
 	NPanel._ctor(self, "DialogConfig")
 	self.skin = skin or 1
@@ -21,9 +29,45 @@ local DialogConfig = Class(NPanel, function(self, w, h, skin, mainwp)
 	self.getKeybinds = nil
 	self.setKeybinds = nil
 
-	self:InitialiseComponents(w or 450, h or 350)
+	self:InitialiseComponents(w or 520, h or 440)
 	Styler(skin or 1):ApplyStyle(self)
+	self:RefreshValues()
 end)
+
+local function Strings()
+	return STRINGS.WAYPOINT.UI.DIALOG.CONFIG
+end
+
+-- One setting row:
+--   Title                         [button]
+--   short description of the current value
+-- Returns label, description, button
+function DialogConfig:AddSettingRow(box, row, maxRows, labelText, onclick)
+	local rowY = box:GridY(row, maxRows)
+	local buttonX = box:W() / 4 + 25
+	local left = -box:W() / 2 + 25
+	local textWidth = (buttonX - 95) - left -- stop well before the button
+
+	local label = self:AddChild(Text(TALKINGFONT, LABEL_FONT_SIZE))
+	label:SetRegionSize(textWidth, 30)
+	label:SetHAlign(ANCHOR_LEFT)
+	label:SetPosition(left + textWidth / 2, rowY + 11)
+	label:SetString(labelText)
+
+	local desc = self:AddChild(Text(TALKINGFONT, DESC_FONT_SIZE))
+	desc:SetRegionSize(textWidth, 36)
+	desc:SetHAlign(ANCHOR_LEFT)
+	desc:SetVAlign(ANCHOR_TOP)
+	desc:EnableWordWrap(true) -- longer translations wrap onto a second line
+	desc:SetColour(DESC_COLOUR[1], DESC_COLOUR[2], DESC_COLOUR[3], DESC_COLOUR[4])
+	desc:SetPosition(left + textWidth / 2, rowY - 19)
+
+	local button = self:AddChild(ImageButton())
+	button:SetPosition(buttonX, rowY)
+	button:SetScale(BUTTON_SCALE, BUTTON_SCALE, BUTTON_SCALE)
+	button:SetOnClick(onclick)
+	return label, desc, button
+end
 
 function DialogConfig:InitialiseComponents(w, h)
 	self:SetVAnchor(ANCHOR_MIDDLE)
@@ -36,53 +80,50 @@ function DialogConfig:InitialiseComponents(w, h)
 	self:AddClass("Frame")
 
 	local box = NBox(self:GetSize())
-
-	local maxCols = 10
-	local maxRows = 8
+	local maxRows = 7
+	local strs = Strings()
 
 	-- Title
 	self.lblTitle = self:AddChild(Text(TALKINGFONT, 28))
 	self.lblTitle:SetPosition(0, box:GridY(1, maxRows), 0)
-	self.lblTitle:SetString(STRINGS.WAYPOINT.UI.DIALOG.CONFIG.TITLE)
+	self.lblTitle:SetString(strs.TITLE)
 
-	-- Keybinds button
-	self.btnKeybinds = self:AddChild(ImageButton())
-	self.btnKeybinds:SetPosition(0, box:GridY(3, maxRows))
-	self.btnKeybinds:SetScale(.7, .7, .7)
-	self.btnKeybinds:SetText(STRINGS.WAYPOINT.UI.BUTTON.EDIT_KEYBINDS)
-	self.btnKeybinds:SetOnClick(function()
-		if self.mainwp then
-			self.mainwp:OpenKeybindDialog()
-		end
-	end)
+	-- Keybinds
+	self.lblKeybinds, self.descKeybinds, self.btnKeybinds = self:AddSettingRow(box, 2, maxRows,
+		STRINGS.WAYPOINT.UI.DIALOG.KEYBINDS.TITLE,
+		function()
+			if self.mainwp then
+				self.mainwp:OpenKeybindDialog()
+			end
+		end)
+	self.btnKeybinds:SetText(STRINGS.WAYPOINT.UI.BUTTON.EDIT)
 
-	-- Debug information section
-	self.lblDebugTitle = self:AddChild(Text(TALKINGFONT, 22))
-	self.lblDebugTitle:SetPosition(0, box:GridY(5, maxRows))
-	self.lblDebugTitle:SetString(STRINGS.WAYPOINT.UI.DIALOG.CONFIG.DEBUG_TITLE)
+	-- HUD button
+	self.lblHudButton, self.descHudButton, self.btnHudButton = self:AddSettingRow(box, 3, maxRows,
+		strs.HUD_BUTTON,
+		function() self:ToggleBool("show_hud_button") end)
 
-	-- UWID display
-	self.lblUwidLabel = self:AddChild(Text(TALKINGFONT, 18))
-	self.lblUwidLabel:SetPosition(box:GridX(2, maxCols), box:GridY(6, maxRows))
-	self.lblUwidLabel:SetString(STRINGS.WAYPOINT.UI.DIALOG.CONFIG.UWID_LABEL)
-	self.lblUwidLabel:SetHAlign(ANCHOR_LEFT)
+	-- Map icons: All / Visible only / Off
+	self.lblMapIcons, self.descMapIcons, self.btnMapIcons = self:AddSettingRow(box, 4, maxRows,
+		strs.MAP_ICONS,
+		function() self:CycleMapIcons() end)
 
-	self.lblUwid = self:AddChild(Text(NUMBERFONT, 18))
-	self.lblUwid:SetPosition(box:GridX(8, maxCols), box:GridY(6, maxRows))
-	self.lblUwid:SetHAlign(ANCHOR_LEFT)
+	-- Coordinates
+	self.lblCoordinates, self.descCoordinates, self.btnCoordinates = self:AddSettingRow(box, 5, maxRows,
+		strs.COORDINATES,
+		function() self:ToggleBool("show_coordinates") end)
 
-	-- Waypoint count display
-	self.lblWaypointCountLabel = self:AddChild(Text(TALKINGFONT, 18))
-	self.lblWaypointCountLabel:SetPosition(box:GridX(2, maxCols), box:GridY(7, maxRows))
-	self.lblWaypointCountLabel:SetString(STRINGS.WAYPOINT.UI.DIALOG.CONFIG.WAYPOINT_COUNT_LABEL)
-	self.lblWaypointCountLabel:SetHAlign(ANCHOR_LEFT)
+	-- Click flag to travel
+	self.lblTravel, self.descTravel, self.btnTravel = self:AddSettingRow(box, 6, maxRows,
+		strs.CLICK_TO_TRAVEL,
+		function() self:ToggleBool("click_to_travel") end)
 
-	self.lblWaypointCount = self:AddChild(Text(NUMBERFONT, 18))
-	self.lblWaypointCount:SetPosition(box:GridX(8, maxCols), box:GridY(7, maxRows))
-	self.lblWaypointCount:SetHAlign(ANCHOR_LEFT)
-
-	-- Update debug info
-	self:UpdateDebugInfo()
+	-- Debug info (small, out of the way)
+	self.btnDebug = self:AddChild(ImageButton())
+	self.btnDebug:SetPosition(0, box:GridY(7, maxRows))
+	self.btnDebug:SetScale(.4, .4, .4)
+	self.btnDebug:SetText(strs.DEBUG_BUTTON)
+	self.btnDebug:SetOnClick(function() self:ShowDebugInfo() end)
 
 	-- Close button
 	self.btnClose = self:AddChild(ImageButton())
@@ -96,25 +137,104 @@ function DialogConfig:InitialiseComponents(w, h)
 	end)
 end
 
-function DialogConfig:UpdateDebugInfo()
-	if self.mainwp then
-		-- Update UWID
-		if self.mainwp.uwid then
-			self.lblUwid:SetString(tostring(self.mainwp.uwid))
-		else
-			self.lblUwid:SetString("N/A")
-		end
+function DialogConfig:GetSettings()
+	if self.mainwp and self.mainwp.getSettings then
+		return self.mainwp.getSettings()
+	end
+	return {}
+end
 
-		-- Update waypoint count
-		if self.mainwp.waypoints then
-			-- Compact waypoints first to get accurate count
-			self.mainwp:CompactWaypoints()
-			local count = #self.mainwp.waypoints
-			self.lblWaypointCount:SetString(tostring(count))
-		else
-			self.lblWaypointCount:SetString("0")
+function DialogConfig:SetSetting(key, value)
+	if self.mainwp and self.mainwp.setSetting then
+		self.mainwp.setSetting(key, value)
+	end
+	self:RefreshValues()
+end
+
+function DialogConfig:ToggleBool(key)
+	local settings = self:GetSettings()
+	self:SetSetting(key, not settings[key])
+end
+
+function DialogConfig:CycleMapIcons()
+	local current = self:GetSettings().map_icons or "all"
+	local nextMode = MAP_ICON_MODES[1]
+	for i, mode in ipairs(MAP_ICON_MODES) do
+		if mode == current then
+			nextMode = MAP_ICON_MODES[i % #MAP_ICON_MODES + 1]
+			break
 		end
 	end
+	self:SetSetting("map_icons", nextMode)
+end
+
+local function KeyName(keycode)
+	if type(keycode) == "number" and keycode >= string.byte("a") and keycode <= string.byte("z") then
+		return string.upper(string.char(keycode))
+	end
+	return STRINGS.WAYPOINT.UI.DIALOG.KEYBINDS.NONE
+end
+
+-- Button text = current value; description = what that value does
+function DialogConfig:RefreshValues()
+	local strs = Strings()
+	local settings = self:GetSettings()
+	local function onoff(v) return v and strs.ON or strs.OFF end
+
+	-- Keybinds: show the current keys
+	local keybinds = (self.mainwp and self.mainwp.getKeybinds and self.mainwp.getKeybinds()) or {}
+	self.descKeybinds:SetString(string.format(strs.KEYBINDS_DESC,
+		KeyName(keybinds.toggle_ui), KeyName(keybinds.toggle_indicators)))
+
+	self.btnHudButton:SetText(onoff(settings.show_hud_button))
+	self.descHudButton:SetString(settings.show_hud_button and strs.HUD_BUTTON_DESC_ON or strs.HUD_BUTTON_DESC_OFF)
+
+	self.btnCoordinates:SetText(onoff(settings.show_coordinates))
+	self.descCoordinates:SetString(settings.show_coordinates and strs.COORDINATES_DESC_ON or strs.COORDINATES_DESC_OFF)
+
+	self.btnTravel:SetText(onoff(settings.click_to_travel))
+	self.descTravel:SetString(settings.click_to_travel and strs.CLICK_TO_TRAVEL_DESC_ON or strs.CLICK_TO_TRAVEL_DESC_OFF)
+
+	local mode = settings.map_icons or "all"
+	if mode == "visible" then
+		self.btnMapIcons:SetText(strs.MAP_ICONS_VISIBLE)
+		self.descMapIcons:SetString(strs.MAP_ICONS_DESC_VISIBLE)
+	elseif mode == "off" then
+		self.btnMapIcons:SetText(strs.MAP_ICONS_OFF)
+		self.descMapIcons:SetString(strs.MAP_ICONS_DESC_OFF)
+	else
+		self.btnMapIcons:SetText(strs.MAP_ICONS_ALL)
+		self.descMapIcons:SetString(strs.MAP_ICONS_DESC_ALL)
+	end
+end
+
+function DialogConfig:ShowDebugInfo()
+	local strs = Strings()
+	local uwid = "N/A"
+	local count = 0
+	if self.mainwp then
+		if self.mainwp.uwid then
+			uwid = tostring(self.mainwp.uwid)
+		end
+		if self.mainwp.waypoints then
+			-- Compact waypoints first to get an accurate count
+			self.mainwp:CompactWaypoints()
+			count = #self.mainwp.waypoints
+		end
+	end
+
+	local PopupDialogScreen = Compatibility:PopupDialogScreen()
+	local popup
+	popup = PopupDialogScreen(
+		strs.DEBUG_TITLE,
+		strs.UWID_LABEL .. " " .. uwid .. "\n" .. strs.WAYPOINT_COUNT_LABEL .. " " .. tostring(count),
+		{
+			{text = STRINGS.WAYPOINT.UI.DIALOG.OPTION.CLOSE, cb = function()
+				TheFrontEnd:PopScreen(popup)
+			end},
+		}
+	)
+	TheFrontEnd:PushScreen(popup)
 end
 
 function DialogConfig:SetCancelCallback(callback)
@@ -134,4 +254,3 @@ function DialogConfig:Kill()
 end
 
 return DialogConfig
-

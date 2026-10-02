@@ -40,6 +40,7 @@ Only `mod/` is copied to the game. `scripts/` inside it is added to the Lua sear
    - Creates `MainWp` (the window) and `NIndicatorManager` under `controls.top_root`.
    - Hooks `controls.OnUpdate` to push player position to the window each frame while visible.
    - Registers key-down handlers for a–z **once per session** (`RegisterHotkeys`); they act on `activeControls`, the latest HUD's UI, so a rebuilt HUD (e.g. character swap) doesn't duplicate handlers. On rebuild the previous UI's marker entities and map-icon templates are removed (`MainWp:CleanupWorldObjects`). Shift+toggle key toggles indicators. Hotkeys are ignored when another screen or any waypoint dialog is open, or the player controller is disabled (this also covers text fields inside the HUD, like the crafting search).
+   - Registers controller handlers once (`RegisterControllerControls`, see *Controller support* below).
    - Adds the HUD icon button (hidden on controllers or if `HIDE_HUD_ICON_WAYPOINT`).
    - Listens to `refreshhudsize` (DST) to rescale/reposition.
 
@@ -85,6 +86,25 @@ Only `mod/` is copied to the game. `scripts/` inside it is added to the Lua sear
 - Localisations must define every key used in `STRINGS.WAYPOINT` – a missing key shows as blank text (or errors where it's concatenated). Keep all `stringlocalization_*.lua` files in sync with `en`. New language = new file + entry in `SUPPORTED_LOCALIZATIONS`/`GAME_LOCALE_TO_MOD` (modmain) + option in modinfo.
 - The commented "FOR MOD DEVELOPMENT" block in `modmain.lua` (`GLOBAL.CHEATS_ENABLED`, `require "debugkeys"`) is enabled automatically in the test deploy – never ship it uncommented.
 
+## Controller support
+
+Controller actions only work **while the scoreboard is held open** (DST: hold the player-status button, Back/View; single-player DS: on the pause screen):
+
+| Button | Action |
+|---|---|
+| LT (`CONTROL_OPEN_CRAFTING`) | Toggle waypoint indicators |
+| RT (`CONTROL_OPEN_INVENTORY`) | Add a waypoint at your position, or remove the one you're standing on (within 0.7 tiles) |
+
+The scoreboard's help bar lists these (post-construct on `screens/playerstatusscreen`).
+
+Why this doesn't conflict with game controls:
+- `TheInput` control handlers only receive controls the active screen did **not** consume (`Input:OnControl` checks `TheFrontEnd:OnControl` first). Anything the scoreboard uses (B, X, Y, LB/RB list paging, d-pad, A) never reaches the mod.
+- While the scoreboard is open the HUD isn't the active screen, so LT/RT don't open crafting/inventory and the player controller is disabled.
+- During normal play the HUD consumes LT/RT, so the mod's handler doesn't fire, and it also checks the active screen is the scoreboard.
+- Ignored when no controller is attached (keyboard users use keybinds) or a waypoint dialog is open.
+
+Not covered yet: navigating the waypoint window or travelling to a waypoint with a controller.
+
 ## Config options (`modinfo.lua`)
 
 | Key | Default | Meaning |
@@ -92,7 +112,7 @@ Only `mod/` is copied to the game. `scripts/` inside it is added to the Lua sear
 | `LOCALIZATION_MOD_WAYPOINT` | `auto` | `auto` (match game language) / `en` / `ru` / `jp` / `zh` / `ko` / `pt` |
 | `SKIN_MOD_WAYPOINT` | `1` | 0 Plain, 1 DST-like |
 | `SHOW_WAYPOINT_INDICATORS` | `true` | indicators on at start |
-| `ENABLE_CONTROLLER_SUPPORT` | `true` | read but currently unused in code |
+| `ENABLE_CONTROLLER_SUPPORT` | `true` | controller actions on the scoreboard (see below) |
 | `WIDTH_MOD_WAYPOINT` / `HEIGHT_MOD_WAYPOINT` | 360 / 480 | window size (300–600) |
 | `COLOUR_PALETTE_VARIETY` | 8 | palette step (lower = more colours) |
 | `HIDE_HUD_ICON_WAYPOINT` | false | hide HUD button |

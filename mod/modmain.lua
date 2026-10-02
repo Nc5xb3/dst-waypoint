@@ -112,18 +112,80 @@ local KEY_INDICATORS = 0  -- Default to None
 local WIDTH = GetModConfigData("WIDTH_MOD_WAYPOINT", 360)
 local HEIGHT = GetModConfigData("HEIGHT_MOD_WAYPOINT", 480)
 local COLOUR_VARIETY = GetModConfigData("COLOUR_PALETTE_VARIETY", 8)
-local HIDE_HUD_ICON = NormalizeBoolean(GetModConfigData("HIDE_HUD_ICON_WAYPOINT", false), false)
-local DISABLE_CUSTOM_MAP_ICONS = NormalizeBoolean(GetModConfigData("DISABLE_CUSTOM_MAP_ICONS_WAYPOINT", false), false)
 local ALWAYS_SHOW_MP = NormalizeBoolean(GetModConfigData("ALWAYS_SHOW_MP_WAYPOINT", false), false)
-local SHOW_COORDINATES = NormalizeBoolean(GetModConfigData("SHOW_COORDINATES", false), false)
-local DISABLE_AUTO_TRAVEL = NormalizeBoolean(GetModConfigData("DISABLE_AUTO_TRAVEL", false), false)
 
 if not DST then
 	ALWAYS_SHOW_MP = false
 end
 
--- Keybind persistence and API
 local PersistentData = require "persistentdata"
+
+-- In-game settings (Configurations dialog). Saved per client and applied instantly.
+-- These used to be modinfo options; see MigrateOldModinfoSettings.
+local WAYPOINT_SETTINGS = {
+	show_hud_button = true,
+	map_icons = "all",        -- "all" | "visible" (hide hidden waypoints) | "off"
+	show_coordinates = false,
+	click_to_travel = true,
+}
+local MAP_ICON_MODES = { all = true, visible = true, off = true }
+
+local function SanitizeSetting(key, value)
+	if key == "map_icons" then
+		return MAP_ICON_MODES[value] and value or nil
+	elseif WAYPOINT_SETTINGS[key] ~= nil and type(value) == "boolean" then
+		return value
+	end
+	return nil
+end
+
+local settingsData = PersistentData("waypoint_settings")
+
+local function SaveSettings()
+	settingsData:SetValue("settings", WAYPOINT_SETTINGS)
+	settingsData:Save()
+end
+
+-- First run only: carry over values from the old modinfo options if the game still has them
+local function MigrateOldModinfoSettings()
+	local function old(name)
+		local ok, v = GLOBAL.pcall(GetModConfigData, name, true)
+		if ok then return v end
+		return nil
+	end
+	local v = old("HIDE_HUD_ICON_WAYPOINT")
+	if v ~= nil then WAYPOINT_SETTINGS.show_hud_button = not NormalizeBoolean(v, false) end
+	v = old("DISABLE_CUSTOM_MAP_ICONS_WAYPOINT")
+	if v ~= nil and NormalizeBoolean(v, false) then WAYPOINT_SETTINGS.map_icons = "off" end
+	v = old("SHOW_COORDINATES")
+	if v ~= nil then WAYPOINT_SETTINGS.show_coordinates = NormalizeBoolean(v, false) end
+	v = old("DISABLE_AUTO_TRAVEL")
+	if v ~= nil then WAYPOINT_SETTINGS.click_to_travel = not NormalizeBoolean(v, false) end
+end
+
+local settingsLoaded = false
+settingsData:Load(function()
+	settingsLoaded = true
+	local saved = settingsData:GetValue("settings")
+	if type(saved) == "table" then
+		for key in pairs(WAYPOINT_SETTINGS) do
+			local value = SanitizeSetting(key, saved[key])
+			if value ~= nil then
+				WAYPOINT_SETTINGS[key] = value
+			end
+		end
+	else
+		MigrateOldModinfoSettings()
+	end
+	SaveSettings()
+end)
+if not settingsLoaded then
+	-- No saved settings file yet
+	MigrateOldModinfoSettings()
+	SaveSettings()
+end
+
+-- Keybind persistence and API
 local keybindData = PersistentData("waypoint_keybinds")
 
 local WAYPOINT_KEYBINDS = {
@@ -324,6 +386,165 @@ local function RegisterHotkeys()
 	end
 end
 
+-----v CONTROLLER v-----
+-- Controller actions only work while the scoreboard is held open
+-- (DST: hold the player-status button, Back/View; DS: on the pause screen).
+-- Why this avoids conflicts:
+--  * TheInput control handlers only receive controls the active screen did NOT
+--    consume (Input:OnControl checks TheFrontEnd:OnControl first), so anything the
+--    scoreboard uses (B, X, Y, LB/RB list paging, d-pad, A) never reaches us.
+--  * While the scoreboard is open the HUD is not the active screen, so LT/RT don't
+--    open crafting/inventory and the player controller is disabled.
+--  * During normal play LT/RT are consumed by the HUD and our handler is skipped.
+local CONTROLLER_REMOVE_RADIUS = .7 -- tiles; standing this close to a waypoint removes it
+local controllerRegistered = false
+
+local function IsControllerContextScreen()
+	local screen = GLOBAL.TheFrontEnd:GetActiveScreen()
+	local name = screen and screen.name
+	if type(name) ~= "string" then
+		return false
+	end
+	if DST then
+		return name == "PlayerStatusScreen"
+	end
+	return name == "PauseScreen"
+end
+
+local function CanProcessControllerAction()
+	if not ENABLE_CONTROLLER_SUPPORT then
+		return nil
+	end
+	if not GLOBAL.TheInput:ControllerAttached() then
+		return nil -- keyboard users have their own keybinds
+	end
+	if not IsControllerContextScreen() then
+		return nil
+	end
+	local waypoint = GetActiveWaypoint()
+	if waypoint == nil then
+		return nil
+	end
+	-- Don't act while one of our own dialogs is open
+	if waypoint.dialogEdit ~= nil or waypoint.dialogMp ~= nil or
+		waypoint.dialogKeybinds ~= nil or waypoint.dialogConfig ~= nil then
+		return nil
+	end
+	return waypoint
+end
+
+local function PlayControllerFeedback()
+	GLOBAL.TheFrontEnd:GetSound():PlaySound("dontstarve/HUD/click_move")
+end
+
+local function OnControllerToggleIndicators(down)
+	if not down then return end
+	local waypoint = CanProcessControllerAction()
+	if waypoint == nil then return end
+	waypoint:ToggleMarkerMode()
+	PlayControllerFeedback()
+end
+
+local function OnControllerAddOrRemove(down)
+	if not down then return end
+	local waypoint = CanProcessControllerAction()
+	if waypoint == nil then return end
+	local player = ThePlayer()
+	if player == nil or player.Transform == nil then return end
+	local point = GLOBAL.Point(player.Transform:GetWorldPosition())
+	local wid = waypoint:ClosestWaypointAt(point, CONTROLLER_REMOVE_RADIUS)
+	if wid ~= nil then
+		waypoint:Remove(wid)
+	else
+		waypoint:Add()
+	end
+	PlayControllerFeedback()
+end
+
+local function RegisterControllerControls()
+	if controllerRegistered or not ENABLE_CONTROLLER_SUPPORT then
+		return
+	end
+	controllerRegistered = true
+	GLOBAL.TheInput:AddControlHandler(GLOBAL.CONTROL_OPEN_CRAFTING, OnControllerToggleIndicators) -- left trigger
+	GLOBAL.TheInput:AddControlHandler(GLOBAL.CONTROL_OPEN_INVENTORY, OnControllerAddOrRemove)    -- right trigger
+end
+
+-- Show the waypoint controls in the scoreboard's controller help bar
+if DST and ENABLE_CONTROLLER_SUPPORT then
+	AddClassPostConstruct("screens/playerstatusscreen", function(self)
+		local OldGetHelpText = self.GetHelpText
+		self.GetHelpText = function(screen, ...)
+			local text = OldGetHelpText and OldGetHelpText(screen, ...) or ""
+			if GetActiveWaypoint() == nil then
+				return text
+			end
+			local input = GLOBAL.TheInput
+			local controller_id = input:GetControllerID()
+			local strs = STRINGS.WAYPOINT.UI.CONTROLLER
+			local extra =
+				input:GetLocalizedControl(controller_id, GLOBAL.CONTROL_OPEN_CRAFTING) .. " " .. strs.TOGGLE_INDICATORS .. "  " ..
+				input:GetLocalizedControl(controller_id, GLOBAL.CONTROL_OPEN_INVENTORY) .. " " .. strs.ADD_REMOVE
+			if text ~= "" then
+				return text .. "  " .. extra
+			end
+			return extra
+		end
+	end)
+end
+
+-----v SETTINGS / HUD BUTTON v-----
+local function PositionHudButton(controls)
+	if controls.waypoint_icon == nil then return end
+	local sw, sh = GetScaledScreen(controls)
+	local offX, offY = controls.waypoint_icon:GetSize()
+	controls.waypoint_icon:SetPosition(sw/2 - offX/2, -sh + offY*1.2, 0)
+end
+
+local function CreateHudButton(controls)
+	local ImageButton = CompatibilityImageButton()
+	controls.waypoint_icon = controls.top_root:AddChild(
+		ImageButton("images/icon.xml","icon.tex","icon.tex","icon.tex")
+	)
+	controls.waypoint_icon:SetTooltip(GetHudIconTooltip())
+	controls.waypoint_icon:SetNormalScale(.7)
+	controls.waypoint_icon:SetFocusScale(.8)
+	controls.waypoint_icon:SetOnClick(function()
+		if GLOBAL.TheInput:IsKeyDown(GLOBAL.KEY_SHIFT) then
+			controls.waypoint:ToggleMarkerMode()
+		else
+			ToggleWaypointUI(controls.waypoint)
+		end
+	end)
+	PositionHudButton(controls)
+end
+
+-- Shown when the setting is on and no controller is attached (controllers can't click it)
+local function UpdateHudButton(controls)
+	local wanted = WAYPOINT_SETTINGS.show_hud_button and not GLOBAL.TheInput:ControllerAttached()
+	if wanted then
+		if controls.waypoint_icon == nil then
+			CreateHudButton(controls)
+		end
+		controls.waypoint_icon:Show()
+	elseif controls.waypoint_icon ~= nil then
+		controls.waypoint_icon:Hide()
+	end
+end
+
+local function ApplySetting(controls, key)
+	local waypoint = controls.waypoint
+	if key == "show_hud_button" then
+		UpdateHudButton(controls)
+	elseif key == "map_icons" then
+		waypoint:SetMapIconMode(WAYPOINT_SETTINGS.map_icons)
+	elseif key == "show_coordinates" then
+		waypoint:SetShowCoordinates(WAYPOINT_SETTINGS.show_coordinates)
+	elseif key == "click_to_travel" then
+		waypoint:SetClickToTravel(WAYPOINT_SETTINGS.click_to_travel)
+	end
+end
+
 -- Post Construct and Key Handlers
 local function AddMod(controls)
 	controls.inst:DoTaskInTime(0, function()
@@ -341,12 +562,13 @@ local function AddMod(controls)
 				WIDTH,
 				HEIGHT,
 				SKIN,
-				SHOW_COORDINATES,
-				DISABLE_AUTO_TRAVEL,
+				WAYPOINT_SETTINGS.show_coordinates,
+				not WAYPOINT_SETTINGS.click_to_travel,
 				COLOUR_VARIETY
 			)
 		)
 		controls.waypoint:SetConfiguration(ALWAYS_SHOW_MP)
+		controls.waypoint:SetMapIconMode(WAYPOINT_SETTINGS.map_icons)
 		controls.waypoint.im = controls.top_root:AddChild(NIndicatorManager())
 		controls.waypoint.im:MoveToBack()
 		controls.waypoint:Hide()
@@ -362,6 +584,7 @@ local function AddMod(controls)
 		end
 
 		RegisterHotkeys()
+		RegisterControllerControls()
 
 		-- Expose keybind accessors to the MainWp instance so the dialog can edit them
 		controls.waypoint.getKeybinds = function()
@@ -382,31 +605,21 @@ local function AddMod(controls)
 			UpdateHudIconTooltip()
 		end
 
-		-- No point of showing icon if controller connected
-		local controller_mode = GLOBAL.TheInput:ControllerAttached()
+		-- HUD Icon (setting: show_hud_button)
+		UpdateHudButton(controls)
 
-		-- HUD Icon
-		if not HIDE_HUD_ICON and not controller_mode then
-			local ImageButton = CompatibilityImageButton()
-			controls.waypoint_icon = controls.top_root:AddChild(
-				ImageButton("images/icon.xml","icon.tex","icon.tex","icon.tex")
-			)
-			local sw, sh = GetScaledScreen(controls)
-			local posX = sw/2
-			local posY = -sh
-			local offX, offY = controls.waypoint_icon:GetSize()
-
-			controls.waypoint_icon:SetTooltip(GetHudIconTooltip())
-			controls.waypoint_icon:SetPosition(posX - offX/2,posY + offY*1.2,0)
-			controls.waypoint_icon:SetNormalScale(.7)
-			controls.waypoint_icon:SetFocusScale(.8)
-			controls.waypoint_icon:SetOnClick(function()
-				if GLOBAL.TheInput:IsKeyDown(GLOBAL.KEY_SHIFT) then
-					controls.waypoint:ToggleMarkerMode()
-				else
-					ToggleWaypointUI(controls.waypoint)
-				end
-			end)
+		-- Expose in-game settings to the Configurations dialog
+		controls.waypoint.getSettings = function()
+			local copy = {}
+			for k, v in pairs(WAYPOINT_SETTINGS) do copy[k] = v end
+			return copy
+		end
+		controls.waypoint.setSetting = function(key, value)
+			local sanitized = SanitizeSetting(key, value)
+			if sanitized == nil then return end
+			WAYPOINT_SETTINGS[key] = sanitized
+			SaveSettings()
+			ApplySetting(controls, key)
 		end
 
 		-- Update hud size and position on event (best to update through event than overriding PlayerProfile.GetHUDSize)
@@ -415,14 +628,7 @@ local function AddMod(controls)
 				if controls.waypoint then
 					controls.waypoint:SetScale(scale)
 				end
-				if controls.waypoint_icon then
-					local sw, sh = GetScaledScreen(controls)
-					local posX = sw/2
-					local posY = -sh
-					local offX, offY = controls.waypoint_icon:GetSize()
-
-					controls.waypoint_icon:SetPosition(posX - offX/2,posY + offY*1.2,0)
-				end
+				PositionHudButton(controls)
 			end)
 			
 			ThePlayer().HUD.inst:PushEvent("refreshhudsize", GLOBAL.TheFrontEnd:GetHUDScale())
@@ -436,8 +642,9 @@ local function AddMod(controls)
 	end)
 end
 
--- Initialize map icon template manager if custom map icons are enabled
-if not DISABLE_CUSTOM_MAP_ICONS then
+-- Map icon template manager (whether icons show is decided per waypoint by the
+-- map_icons setting, each time the map opens)
+do
 	local NMapIconTemplateManager = require "widgets/nmapicontemplatemanager"
 	require "frontend"
 	local OldFrontEnd_ctor = GLOBAL.FrontEnd._ctor

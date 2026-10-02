@@ -63,4 +63,11 @@ function Compatibility:TextEdit()
 	return require "widgets/dsttextedit"
 end
 
+function Compatibility:PopupDialogScreen()
+	if self.DST then
+		return require "screens/redux/popupdialog"
+	end
+	return require "screens/popupdialog"
+end
+
 return Compatibility()

@@ -1,7 +1,7 @@
 name = "Waypoint Mod" 
 description = "The ability to add a waypoint at your position and bring up a list of waypoints to travel towards."
 author = "Nc5xb3"
-version = "1.0.8"
+version = "1.1.0"
 
 forumthread = "/files/file/1580-waypoint/"
 
@@ -45,7 +45,7 @@ configuration_options =
 {
     {
         name = "LOCALIZATION_MOD_WAYPOINT",
-        label = "Localization",
+        label = "Language",
         hover = "Auto matches the game's language (English if not supported)",
         options = {
         	{description = "Auto", data = "auto"},
@@ -60,8 +60,8 @@ configuration_options =
     },
     {
         name = "SKIN_MOD_WAYPOINT",
-        label = "Skin",
-        hover = "Sets the skin",
+        label = "Window style",
+        hover = "Look of the waypoint window",
         options = {
         	{description = "Plain", data = 0},
         	{description = "DST-like", data = 1}
@@ -69,43 +69,33 @@ configuration_options =
         default = 1,
     },
     {
-        name = "SHOW_WAYPOINT_INDICATORS",
-        label = "Show waypoint indicators",
-        hover = "Waypoint indicators visibility on startup, can be toggled in-game",
-        options = {
-            {description = "False", data = false},
-            {description = "True", data = true}
-        },
-        default = true,
-    },
-    {
-        name = "ENABLE_CONTROLLER_SUPPORT",
-        label = "Enable controller support",
-        hover = "Controller support; if conflicts arise disable",
-        options = {
-            {description = "False", data = false},
-            {description = "True", data = true}
-        },
-        default = true,
-    },
-    {
         name = "WIDTH_MOD_WAYPOINT",
-        label = "Width",
-        hover = "Sets the width size of the window",
+        label = "Window width",
+        hover = "Width of the waypoint window",
         options = sizeList,
         default = 360,
     },
     {
         name = "HEIGHT_MOD_WAYPOINT",
-        label = "Height",
-        hover = "Sets the height size of the window",
+        label = "Window height",
+        hover = "Height of the waypoint window (taller shows more waypoints per page)",
         options = sizeList,
         default = 480,
     },
     {
+        name = "SHOW_WAYPOINT_INDICATORS",
+        label = "Indicators on at start",
+        hover = "Show waypoint indicators when you join a world. Toggle any time in-game",
+        options = {
+            {description = "Off", data = false},
+            {description = "On", data = true}
+        },
+        default = true,
+    },
+    {
         name = "COLOUR_PALETTE_VARIETY",
-        label = "Colour variety",
-        hover = "Sets how much variety of colours are available when editing waypoint flags",
+        label = "Colour choices",
+        hover = "How many colours the flag colour picker offers",
         options = {
             {description = "Minimal", data = 15},
             {description = "Less", data = 10},
@@ -116,53 +106,23 @@ configuration_options =
         default = 8,
     },
     {
-        name = "HIDE_HUD_ICON_WAYPOINT",
-        label = "Hide the hud icon",
-        hover = "Sets the option to hide the waypoint hud icon",
-        options = {
-            {description = "False", data = false},
-            {description = "True", data = true}
-        },
-        default = false,
-    },
-    {
-        name = "DISABLE_CUSTOM_MAP_ICONS_WAYPOINT",
-        label = "Disable custom map icons",
-        hover = "Sets the option to disable waypoint map icons",
-        options = {
-            {description = "False", data = false},
-            {description = "True", data = true}
-        },
-        default = false,
-    },
-    {
         name = "ALWAYS_SHOW_MP_WAYPOINT",
-        label = "DST - Show MP Toggle",
-        hover = "Sets the option to always show the movement prediction toggle button",
+        label = "Movement prediction button",
+        hover = "Travel needs movement prediction (lag compensation) on. The button to switch it appears automatically when it's off; set Always to keep it visible",
         options = {
-            {description = "False", data = false},
-            {description = "True", data = true}
+            {description = "When needed", data = false},
+            {description = "Always", data = true}
         },
         default = false,
     },
     {
-        name = "SHOW_COORDINATES",
-        label = "Show map coordinates",
-        hover = "Show current play and all waypoints coordinates",
+        name = "ENABLE_CONTROLLER_SUPPORT",
+        label = "Controller support",
+        hover = "Hold the scoreboard button (Back/View): LT toggles indicators, RT adds a waypoint (or removes the one you stand on)",
         options = {
-            {description = "False", data = false},
-            {description = "True", data = true}
+            {description = "Off", data = false},
+            {description = "On", data = true}
         },
-        default = false,
-    },
-    {
-        name = "DISABLE_AUTO_TRAVEL",
-        label = "Disable auto travel",
-        hover = "Disable the ability to click on a waypoint flag for auto travel",
-        options = {
-            {description = "False", data = false},
-            {description = "True", data = true}
-        },
-        default = false,
+        default = true,
     },
 }

@@ -5,6 +5,10 @@ WAYPOINT = {
 		HUD = {
 			TOOLTIP = "Координаты на карте"
 		},
+		CONTROLLER = {
+			TOGGLE_INDICATORS = "Индикаторы",
+			ADD_REMOVE = "Добавить/удалить координаты",
+		},
 		MENU = {
 			TITLE = "- Координаты -"
 		},
@@ -50,6 +54,10 @@ WAYPOINT = {
 				COLOUR = "Цвет",
 				RANDOMIZE = "Случайно",
 			},
+			DELETE_CONFIRM = {
+				TITLE = "Удалить координаты?",
+				MESSAGE = "«%s» будет удалено. Это нельзя отменить.",
+			},
 			MP = {
 				TITLE = "Информация",
 				MESSAGE1 = "Компенсация лагов не включена, значит анализ",
@@ -70,6 +78,26 @@ WAYPOINT = {
 			},
 			CONFIG = {
 				TITLE = "Настройки",
+				HUD_BUTTON = "Кнопка на HUD",
+				MAP_ICONS = "Значки на карте",
+				MAP_ICONS_ALL = "Все",
+				MAP_ICONS_VISIBLE = "Только видимые",
+				MAP_ICONS_OFF = "Выкл",
+				COORDINATES = "Координаты X/Z",
+				CLICK_TO_TRAVEL = "Перемещение по клику",
+				ON = "Вкл",
+				OFF = "Выкл",
+				DEBUG_BUTTON = "Отладка",
+				KEYBINDS_DESC = "Окно: %s   Индикаторы: %s",
+				HUD_BUTTON_DESC_ON = "Кнопка на экране открывает список",
+				HUD_BUTTON_DESC_OFF = "Кнопки нет — используйте клавишу",
+				MAP_ICONS_DESC_ALL = "Флажки всех точек на карте",
+				MAP_ICONS_DESC_VISIBLE = "Скрытые точки не показываются на карте",
+				MAP_ICONS_DESC_OFF = "Флажков на карте нет",
+				COORDINATES_DESC_ON = "X/Z показаны в списке",
+				COORDINATES_DESC_OFF = "Координаты не показываются",
+				CLICK_TO_TRAVEL_DESC_ON = "Нажмите на флажок, чтобы дойти до точки",
+				CLICK_TO_TRAVEL_DESC_OFF = "Нажатие на флажок ничего не делает",
 				DEBUG_TITLE = "Отладочная информация",
 				UWID_LABEL = "UWID:",
 				WAYPOINT_COUNT_LABEL = "Координаты:",

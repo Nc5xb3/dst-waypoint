@@ -5,6 +5,10 @@ WAYPOINT = {
 		HUD = {
 			TOOLTIP = "웨이포인트 열기/닫기"
 		},
+		CONTROLLER = {
+			TOGGLE_INDICATORS = "웨이포인트 표시기",
+			ADD_REMOVE = "웨이포인트 추가/삭제",
+		},
 		MENU = {
 			TITLE = "- 웨이포인트 -"
 		},
@@ -50,6 +54,10 @@ WAYPOINT = {
 				COLOUR = "색상",
 				RANDOMIZE = "무작위",
 			},
+			DELETE_CONFIRM = {
+				TITLE = "웨이포인트를 삭제할까요?",
+				MESSAGE = "'%s'이(가) 삭제됩니다. 되돌릴 수 없습니다.",
+			},
 			MP = {
 				TITLE = "안내",
 				MESSAGE1 = "지연 보상이 '예측' 모드가 아니므로",
@@ -70,6 +78,26 @@ WAYPOINT = {
 			},
 			CONFIG = {
 				TITLE = "설정",
+				HUD_BUTTON = "HUD 버튼",
+				MAP_ICONS = "지도 아이콘",
+				MAP_ICONS_ALL = "전체",
+				MAP_ICONS_VISIBLE = "보이는 것만",
+				MAP_ICONS_OFF = "끔",
+				COORDINATES = "좌표",
+				CLICK_TO_TRAVEL = "깃발 클릭으로 이동",
+				ON = "켬",
+				OFF = "끔",
+				DEBUG_BUTTON = "디버그 정보",
+				KEYBINDS_DESC = "창: %s   표시기: %s",
+				HUD_BUTTON_DESC_ON = "화면 버튼으로 웨이포인트 목록을 엽니다",
+				HUD_BUTTON_DESC_OFF = "화면 버튼 없음, 단축키를 사용하세요",
+				MAP_ICONS_DESC_ALL = "모든 웨이포인트를 지도에 깃발로 표시",
+				MAP_ICONS_DESC_VISIBLE = "숨긴 웨이포인트는 지도에 표시하지 않음",
+				MAP_ICONS_DESC_OFF = "지도에 깃발을 표시하지 않음",
+				COORDINATES_DESC_ON = "목록에 X/Z 좌표 표시",
+				COORDINATES_DESC_OFF = "좌표를 표시하지 않음",
+				CLICK_TO_TRAVEL_DESC_ON = "깃발을 클릭하면 그곳으로 걸어갑니다",
+				CLICK_TO_TRAVEL_DESC_OFF = "깃발을 클릭해도 이동하지 않음",
 				DEBUG_TITLE = "디버그 정보",
 				UWID_LABEL = "UWID:",
 				WAYPOINT_COUNT_LABEL = "웨이포인트 수:",

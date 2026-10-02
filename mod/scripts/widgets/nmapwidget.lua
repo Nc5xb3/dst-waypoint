@@ -19,9 +19,11 @@ local function NMapWidget(MapWidget)
 
 	if TheFrontEnd.NMapIconTemplateManager ~= nil then
 		for i,v in pairs(TheFrontEnd.NMapIconTemplateManager.templates) do
-			if v.widget ~= nil then
+			-- A template's widget function may return nil to skip the icon
+			local widget = v.widget ~= nil and v.widget(MapWidget.nmapicons) or nil
+			if widget ~= nil then
 				local icon = MapWidget.nmapicons:AddChild(NMapIcon())
-				icon.widget = icon:AddChild(v.widget(MapWidget.nmapicons))
+				icon.widget = icon:AddChild(widget)
 				icon:SetWorldPosition(v.worldposition)
 			end
 		end

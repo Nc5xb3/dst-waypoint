@@ -5,6 +5,10 @@ WAYPOINT = {
 		HUD = {
 			TOOLTIP = "切换路标"
 		},
+		CONTROLLER = {
+			TOGGLE_INDICATORS = "路标指示器",
+			ADD_REMOVE = "添加/删除路标",
+		},
 		MENU = {
 			TITLE = "- 路标 -"
 		},
@@ -50,6 +54,10 @@ WAYPOINT = {
 				COLOUR = "颜色",
 				RANDOMIZE = "随机",
 			},
+			DELETE_CONFIRM = {
+				TITLE = "删除路标？",
+				MESSAGE = "将删除“%s”，此操作无法撤销。",
+			},
 			MP = {
 				TITLE = "提示",
 				MESSAGE1 = "延迟补偿不是“预测”模式，",
@@ -70,6 +78,26 @@ WAYPOINT = {
 			},
 			CONFIG = {
 				TITLE = "设置",
+				HUD_BUTTON = "HUD 按钮",
+				MAP_ICONS = "地图图标",
+				MAP_ICONS_ALL = "全部",
+				MAP_ICONS_VISIBLE = "仅可见",
+				MAP_ICONS_OFF = "关闭",
+				COORDINATES = "坐标",
+				CLICK_TO_TRAVEL = "点击旗帜前往",
+				ON = "开",
+				OFF = "关",
+				DEBUG_BUTTON = "调试信息",
+				KEYBINDS_DESC = "窗口：%s   指示器：%s",
+				HUD_BUTTON_DESC_ON = "屏幕上的按钮可打开路标列表",
+				HUD_BUTTON_DESC_OFF = "不显示按钮，请使用快捷键",
+				MAP_ICONS_DESC_ALL = "所有路标都在地图上显示旗帜",
+				MAP_ICONS_DESC_VISIBLE = "已隐藏的路标不在地图上显示",
+				MAP_ICONS_DESC_OFF = "地图上不显示路标旗帜",
+				COORDINATES_DESC_ON = "在路标列表中显示 X/Z",
+				COORDINATES_DESC_OFF = "不显示坐标",
+				CLICK_TO_TRAVEL_DESC_ON = "点击路标旗帜即可走过去",
+				CLICK_TO_TRAVEL_DESC_OFF = "点击旗帜不会移动",
 				DEBUG_TITLE = "调试信息",
 				UWID_LABEL = "UWID：",
 				WAYPOINT_COUNT_LABEL = "路标数：",

@@ -5,6 +5,10 @@ WAYPOINT = {
 		HUD = {
 			TOOLTIP = "ウェイポイントをトグル"
 		},
+		CONTROLLER = {
+			TOGGLE_INDICATORS = "ウェイポイント表示",
+			ADD_REMOVE = "ウェイポイント追加/削除",
+		},
 		MENU = {
 			TITLE = "- ウェイポイント -"
 		},
@@ -50,6 +54,10 @@ WAYPOINT = {
 				COLOUR = "色",
 				RANDOMIZE = "ランダム",
 			},
+			DELETE_CONFIRM = {
+				TITLE = "ウェイポイントを削除しますか？",
+				MESSAGE = "「%s」を削除します。元に戻せません。",
+			},
 			MP = {
 				TITLE = "Information",
 				MESSAGE1 = "Lag Compensation is NOT predictive, meaning",
@@ -70,6 +78,26 @@ WAYPOINT = {
 			},
 			CONFIG = {
 				TITLE = "設定",
+				HUD_BUTTON = "HUDボタン",
+				MAP_ICONS = "マップアイコン",
+				MAP_ICONS_ALL = "すべて",
+				MAP_ICONS_VISIBLE = "表示中のみ",
+				MAP_ICONS_OFF = "オフ",
+				COORDINATES = "座標",
+				CLICK_TO_TRAVEL = "旗クリックで移動",
+				ON = "オン",
+				OFF = "オフ",
+				DEBUG_BUTTON = "デバッグ情報",
+				KEYBINDS_DESC = "ウィンドウ: %s   表示: %s",
+				HUD_BUTTON_DESC_ON = "画面上のボタンでリストを開きます",
+				HUD_BUTTON_DESC_OFF = "画面ボタンなし（キーで開きます）",
+				MAP_ICONS_DESC_ALL = "すべての旗をマップに表示",
+				MAP_ICONS_DESC_VISIBLE = "非表示のウェイポイントはマップに出ません",
+				MAP_ICONS_DESC_OFF = "マップに旗を表示しません",
+				COORDINATES_DESC_ON = "リストにX/Z座標を表示",
+				COORDINATES_DESC_OFF = "座標を表示しません",
+				CLICK_TO_TRAVEL_DESC_ON = "旗をクリックするとそこへ歩きます",
+				CLICK_TO_TRAVEL_DESC_OFF = "旗をクリックしても移動しません",
 				DEBUG_TITLE = "デバッグ情報",
 				UWID_LABEL = "UWID:",
 				WAYPOINT_COUNT_LABEL = "ウェイポイント:",

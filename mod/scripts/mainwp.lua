@@ -36,6 +36,7 @@ local TOGGLE_ALPHA_HOVER = 0.7
 local DIRECTION_LINE_MAX_RANGE = 5
 local DIRECTION_LINE_SCALE = 0.6
 local CLOSEST_WAYPOINT_INITIAL_DIST = 9999
+local HIDDEN_FLAG_ALPHA = 0.5
 
 -- Helper function to calculate squared distance (avoids sqrt for comparisons)
 local function GetSquaredDistance(point1, point2)
@@ -52,6 +53,7 @@ local MainWp = Class(NPanel, function(self, w, h, skin, showCoordinates, disable
 	self.skin = skin or 1
 	self.showCoordinates = showCoordinates or false
 	self.disableAutoTravel = disableAutoTravel or false
+	self.mapIconMode = "all" -- "all" | "visible" | "off", see SetMapIconMode
 	self.colourVariety = colourVariety or 8
 
 	-- editMode removed - functionality moved to edit modal
@@ -572,20 +574,25 @@ function MainWp:Edit(wid)
 			self:KillEditDialog()
 		end)
 		self.dialogEdit:SetDeleteCallback(function()
-			-- Use the dialog's current id: it changes if the waypoint was moved up/down
-			local currentWid = self.dialogEdit.waypoint_id or wid
-			if self.waypoints[currentWid] == waypoint then
-				self:Remove(currentWid)
-			else
-				-- Fallback: locate the waypoint by reference
-				for i, w in ipairs(self.waypoints) do
-					if w == waypoint then
-						self:Remove(i)
-						break
+			self:ConfirmDelete(waypoint, function()
+				if self.dialogEdit == nil then
+					return
+				end
+				-- Use the dialog's current id: it changes if the waypoint was moved up/down
+				local currentWid = self.dialogEdit.waypoint_id or wid
+				if self.waypoints[currentWid] == waypoint then
+					self:Remove(currentWid)
+				else
+					-- Fallback: locate the waypoint by reference
+					for i, w in ipairs(self.waypoints) do
+						if w == waypoint then
+							self:Remove(i)
+							break
+						end
 					end
 				end
-			end
-			self:KillEditDialog()
+				self:KillEditDialog()
+			end)
 		end)
 		-- Set up callbacks for move/toggle buttons
 		-- (these don't call SetWaypoint, so unsaved edits in the dialog are kept)
@@ -610,6 +617,29 @@ function MainWp:Edit(wid)
 	else
 		print("[waypoint] already editing!")
 	end
+end
+
+-- Ask before deleting a waypoint. Uses the game's own popup dialog, which is a
+-- separate screen, so waypoint hotkeys are blocked while it is open.
+function MainWp:ConfirmDelete(waypoint, onconfirm)
+	local PopupDialogScreen = Compatibility:PopupDialogScreen()
+	local strs = STRINGS.WAYPOINT.UI.DIALOG.DELETE_CONFIRM
+	local name = (waypoint and waypoint.name) or ""
+	local popup
+	popup = PopupDialogScreen(
+		strs.TITLE,
+		string.format(strs.MESSAGE, name),
+		{
+			{text = STRINGS.WAYPOINT.UI.DIALOG.OPTION.DELETE, cb = function()
+				TheFrontEnd:PopScreen(popup)
+				onconfirm()
+			end},
+			{text = STRINGS.WAYPOINT.UI.DIALOG.OPTION.CANCEL, cb = function()
+				TheFrontEnd:PopScreen(popup)
+			end},
+		}
+	)
+	TheFrontEnd:PushScreen(popup)
 end
 
 function MainWp:DisableMainUI()
@@ -718,6 +748,10 @@ function MainWp:KillKeybindDialog()
 		self.dialogKeybinds:Kill()
 		self.dialogKeybinds = nil
 	end
+	-- Keybinds may have changed: refresh the Configurations dialog summary
+	if self.dialogConfig ~= nil and self.dialogConfig.RefreshValues then
+		self.dialogConfig:RefreshValues()
+	end
 end
 
 function MainWp:Remove(wid)
@@ -795,6 +829,10 @@ function MainWp:AddMapIcon(waypoint)
 		local template = NMapIconTemplate()
 		template:SetWorldPosition(waypoint.coord.x, waypoint.coord.y, waypoint.coord.z)
 		template:SetWidget(function(inst)
+			-- Evaluated each time the map opens; nil = no icon for this waypoint
+			if not self:ShouldShowMapIcon(waypoint) then
+				return nil
+			end
 			local root = inst:AddChild(NPanel("MapIconRoot"))
 			
 			local icon = root:AddChild(ImageButton("images/flag.xml","flag.tex","flag.tex","flag.tex"))
@@ -898,6 +936,7 @@ function MainWp:UpdateMarker(waypoint)
 				indicator:SetTooltip(
 					waypoint.name
 				)
+				indicator:SetCallback(nil)
 			else
 				indicator:SetTooltip(
 					STRINGS.LMB .. " " ..
@@ -909,6 +948,48 @@ function MainWp:UpdateMarker(waypoint)
 					self:MovePlayerTo(waypoint)
 				end)
 			end
+		end
+	end
+end
+
+-- In-game settings (applied live from the Configurations dialog) --
+
+function MainWp:ShouldShowMapIcon(waypoint)
+	if self.mapIconMode == "off" then
+		return false
+	end
+	if self.mapIconMode == "visible" and waypoint.hidden then
+		return false
+	end
+	return true
+end
+
+-- Takes effect the next time the map is opened
+function MainWp:SetMapIconMode(mode)
+	self.mapIconMode = mode or "all"
+end
+
+function MainWp:SetShowCoordinates(show)
+	self.showCoordinates = show and true or false
+	if not self.showCoordinates then
+		self.lblXZ:SetString("")
+		for i, li in ipairs(self.listWaypoint) do
+			li.lblX:SetString("")
+			li.lblZ:SetString("")
+		end
+	end
+	self:UpdateList()
+end
+
+function MainWp:SetClickToTravel(enabled)
+	self.disableAutoTravel = not enabled
+	for i, li in ipairs(self.listWaypoint) do
+		li.btnNavigate:SetTooltip(enabled and STRINGS.WAYPOINT.UI.BUTTON.TRAVEL or nil)
+	end
+	-- Refresh indicator tooltips/click handlers (map icons pick it up when the map opens)
+	if self.markers ~= nil then
+		for waypoint, marker in pairs(self.markers) do
+			self:UpdateMarker(waypoint)
 		end
 	end
 end
@@ -1089,8 +1170,10 @@ function MainWp:DisplayWaypoint(li, waypoint)
 			li.lblX:SetString(math.floor(waypoint.coord.x))
 			li.lblZ:SetString(math.floor(waypoint.coord.z))
 		end
-		li.btnNavigate:SetImageNormalColour(waypoint.colour.r,waypoint.colour.g,waypoint.colour.b,1)
-		li.btnNavigate:SetImageFocusColour(waypoint.colour.r,waypoint.colour.g,waypoint.colour.b,1)
+		-- Hidden waypoints get a half-transparent flag
+		local flagAlpha = waypoint.hidden and HIDDEN_FLAG_ALPHA or 1
+		li.btnNavigate:SetImageNormalColour(waypoint.colour.r,waypoint.colour.g,waypoint.colour.b,flagAlpha)
+		li.btnNavigate:SetImageFocusColour(waypoint.colour.r,waypoint.colour.g,waypoint.colour.b,flagAlpha)
 		if waypoint.hidden then
 			li.btnHidden:SetTextures("images/nuiwp.xml","markeroff.tex","markeroff.tex","markeroff.tex")
 		else
